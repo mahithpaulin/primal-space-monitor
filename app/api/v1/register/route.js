@@ -1,10 +1,10 @@
 import crypto from 'node:crypto';
-import { withState } from '../../../lib/store.js';
-import { hashToken, newToken, safeEqual } from '../../../lib/auth.js';
-import { sanitizeDeviceInfo } from '../../../lib/device.js';
-import { cleanString } from '../../../lib/http.js';
-import { json, fail, readJson } from '../../../lib/http.js';
-import { offlineSeconds } from '../../../lib/status.js';
+import { withState } from '../../../../lib/store.js';
+import { hashToken, newToken, safeEqual } from '../../../../lib/auth.js';
+import { sanitizeDeviceInfo } from '../../../../lib/device.js';
+import { cleanString } from '../../../../lib/http.js';
+import { json, fail, readJson } from '../../../../lib/http.js';
+import { offlineSeconds } from '../../../../lib/status.js';
 
 export const dynamic = 'force-dynamic';
 
