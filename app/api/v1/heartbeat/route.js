@@ -3,6 +3,7 @@ import { authenticateDevice } from '../../../../lib/auth.js';
 import { sanitizeMetrics, sanitizeWorker } from '../../../../lib/device.js';
 import { cleanString, json, fail, readJson } from '../../../../lib/http.js';
 import { deviceStatus, offlineSeconds } from '../../../../lib/status.js';
+import { normalizeWorkloads } from '../../../../lib/workloads.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,9 +22,7 @@ export async function POST(request) {
     const metrics = sanitizeMetrics(body.metrics || {});
     const worker = sanitizeWorker(body.worker || {});
     const cliVersion = cleanString(body.cli_version, 32);
-    const workloads = Array.isArray(body.workloads)
-      ? body.workloads.filter((item) => typeof item === 'string' && item.length > 0 && item.length <= 64).slice(0, 16)
-      : [];
+    const workloads = normalizeWorkloads(body.workloads);
 
     device.metrics = metrics;
     device.worker = worker;

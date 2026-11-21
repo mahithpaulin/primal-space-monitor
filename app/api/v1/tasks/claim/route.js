@@ -2,6 +2,7 @@ import { withStateRead, withState } from '../../../../../lib/store.js';
 import { authenticateDevice } from '../../../../../lib/auth.js';
 import { taskView } from '../../../../../lib/tasks.js';
 import { cleanString, json, fail, readJson } from '../../../../../lib/http.js';
+import { normalizeWorkloads } from '../../../../../lib/workloads.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,12 +21,8 @@ export async function POST(request) {
   }
 
   const now = Date.now();
-  const requested = Array.isArray(body.workloads)
-    ? body.workloads.filter((item) => typeof item === 'string' && item.length > 0 && item.length <= 64)
-    : [];
-  const stored = Array.isArray(state.devices[deviceId]?.workloads)
-    ? state.devices[deviceId].workloads.filter((item) => typeof item === 'string' && item.length > 0)
-    : [];
+  const requested = normalizeWorkloads(body.workloads);
+  const stored = normalizeWorkloads(state.devices[deviceId]?.workloads);
   const supported = stored.length ? stored : requested.length ? requested : null;
   const existing = Object.values(state.tasks).find(
     (task) => task.claimed_by === deviceId && ['claimed', 'executing'].includes(task.status)
