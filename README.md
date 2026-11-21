@@ -29,15 +29,12 @@ store, so no external database account is required for v0.1.
 | POST | `/api/v1/tasks/{id}` | `X-Primal-Admin-Key` | Request cancellation |
 | POST | `/api/v1/disconnect` | device bearer token | Mark device offline immediately |
 
-The dashboard exposes an admin-key field for queueing and cancelling tasks. The
-key is never stored in browser storage.
-
+Task queueing and cancellation are open in this low-level v0.1 experiment.
 ## Environment variables
 
 See `.env.example`.
 
 - `PRIMAL_ENROLLMENT_KEY` — shared secret required for registration.
-- `PRIMAL_ADMIN_KEY` — required for task creation/cancellation APIs.
 - `PRIMAL_OFFLINE_SECONDS` — heartbeat expiry, default `90`.
 - `BLOB_READ_WRITE_TOKEN` — injected by connecting the Vercel Blob store.
 - `PRIMAL_STATE_PATH` — optional state object key, default `primal-space/state.json`.
@@ -56,7 +53,6 @@ npm run dev
 vercel link --yes --project primal-space-monitor
 vercel storage connect primal-space-state --project primal-space-monitor
 vercel env add PRIMAL_ENROLLMENT_KEY production
-vercel env add PRIMAL_ADMIN_KEY production
 vercel env add PRIMAL_OFFLINE_SECONDS production
 vercel deploy --prod --yes
 ```

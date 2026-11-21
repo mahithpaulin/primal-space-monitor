@@ -1,6 +1,5 @@
 import { readState } from '../../../../../lib/store.js';
 import { withState } from '../../../../../lib/store.js';
-import { isAdmin } from '../../../../../lib/auth.js';
 import { taskView } from '../../../../../lib/tasks.js';
 import { json, fail } from '../../../../../lib/http.js';
 
@@ -14,8 +13,7 @@ export async function GET(_request, context) {
   return json({ task: taskView(task, state.devices) });
 }
 
-export async function POST(request, context) {
-  if (!isAdmin(request)) return fail('admin_key_required', 401);
+export async function POST(_request, context) {
   const { id } = await context.params;
   const result = await withState((state) => {
     const task = state.tasks[id];

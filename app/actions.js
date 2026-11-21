@@ -2,20 +2,9 @@
 
 import crypto from 'node:crypto';
 import { revalidatePath } from 'next/cache';
-import { safeEqual } from '../lib/auth.js';
 import { issueTask, cancelTask } from '../lib/actions.js';
 
-function adminConfigured() {
-  return Boolean(process.env.PRIMAL_ADMIN_KEY);
-}
-
-function adminMatches(key) {
-  if (!adminConfigured()) return false;
-  return safeEqual(key, process.env.PRIMAL_ADMIN_KEY);
-}
-
-export async function enqueueBenchmarkAction({ deviceId, adminKey }) {
-  if (!adminMatches(adminKey)) return { ok: false, error: 'Invalid admin key.' };
+export async function enqueueBenchmarkAction({ deviceId }) {
   try {
     const task = await issueTask({
       deviceId,
@@ -39,8 +28,7 @@ export async function enqueueBenchmarkAction({ deviceId, adminKey }) {
   }
 }
 
-export async function cancelTaskAction({ taskId, adminKey }) {
-  if (!adminMatches(adminKey)) return { ok: false, error: 'Invalid admin key.' };
+export async function cancelTaskAction({ taskId }) {
   try {
     const task = await cancelTask(taskId);
     revalidatePath('/');

@@ -2,7 +2,6 @@ import { readState } from '../../../../lib/store.js';
 import { taskView, WORKLOADS } from '../../../../lib/tasks.js';
 import { createTask } from '../../../../lib/tasks.js';
 import { withState, pruneTasks } from '../../../../lib/store.js';
-import { isAdmin } from '../../../../lib/auth.js';
 import { cleanString, json, fail, readJson } from '../../../../lib/http.js';
 
 export const dynamic = 'force-dynamic';
@@ -21,7 +20,6 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
-  if (!isAdmin(request)) return fail('admin_key_required', 401);
   const body = await readJson(request);
   if (!body) return fail('invalid_json', 400);
 
@@ -37,7 +35,7 @@ export async function POST(request) {
       workload,
       params: body.params,
       resourceLimits: body.resource_limits,
-      createdBy: 'admin_api',
+      createdBy: 'public_api',
     });
     state.tasks[task.id] = task;
     pruneTasks(state);

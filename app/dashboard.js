@@ -58,7 +58,7 @@ function StatCard({ label, value, detail }) {
   );
 }
 
-function DeviceCard({ device, adminKey, pending, onQueue, onCancel }) {
+function DeviceCard({ device, pending, onQueue, onCancel }) {
   const metrics = device.metrics || {};
   const worker = device.worker || {};
   const ramTotal = metrics.ram_total_mb;
@@ -176,7 +176,7 @@ function DeviceCard({ device, adminKey, pending, onQueue, onCancel }) {
   );
 }
 
-function TaskTable({ tasks, adminKey, pending, onCancel }) {
+function TaskTable({ tasks, pending, onCancel }) {
   if (!tasks.length) {
     return <p className="muted empty">No tasks yet. Queue a benchmark from a connected device.</p>;
   }
@@ -237,7 +237,6 @@ export default function Dashboard({ initialDevices, initialTasks, initialSummary
   const [devices, setDevices] = useState(initialDevices);
   const [tasks, setTasks] = useState(initialTasks);
   const [summary, setSummary] = useState(initialSummary);
-  const [adminKey, setAdminKey] = useState('');
   const [notice, setNotice] = useState(null);
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(Date.now());
@@ -278,7 +277,7 @@ export default function Dashboard({ initialDevices, initialTasks, initialSummary
 
   function queueBenchmark(deviceId) {
     startTransition(async () => {
-      const result = await enqueueBenchmarkAction({ deviceId, adminKey });
+      const result = await enqueueBenchmarkAction({ deviceId });
       setNotice(result.ok ? result.message : result.error);
       if (result.ok) refresh();
     });
@@ -286,7 +285,7 @@ export default function Dashboard({ initialDevices, initialTasks, initialSummary
 
   function cancelTask(taskId) {
     startTransition(async () => {
-      const result = await cancelTaskAction({ taskId, adminKey });
+      const result = await cancelTaskAction({ taskId });
       setNotice(result.ok ? result.message : result.error);
       if (result.ok) refresh();
     });
@@ -312,15 +311,6 @@ export default function Dashboard({ initialDevices, initialTasks, initialSummary
             {error ? 'API error' : 'live'}
           </span>
           <span className="muted small">updated {formatAge(new Date(lastUpdated).toISOString())}</span>
-          <input
-            className="admin-key"
-            type="password"
-            value={adminKey}
-            onChange={(event) => setAdminKey(event.target.value)}
-            placeholder="Admin key for actions"
-            aria-label="Admin key"
-            autoComplete="off"
-          />
           <button type="button" className="ghost" onClick={refresh}>
             Refresh
           </button>
@@ -357,7 +347,6 @@ export default function Dashboard({ initialDevices, initialTasks, initialSummary
               <DeviceCard
                 key={device.id}
                 device={device}
-                adminKey={adminKey}
                 pending={pending}
                 onQueue={queueBenchmark}
                 onCancel={cancelTask}
@@ -380,7 +369,7 @@ export default function Dashboard({ initialDevices, initialTasks, initialSummary
           <h2>Tasks</h2>
           <span className="muted small">deterministic hash_sum_v1 workload</span>
         </div>
-        <TaskTable tasks={tasks} adminKey={adminKey} pending={pending} onCancel={cancelTask} />
+        <TaskTable tasks={tasks} pending={pending} onCancel={cancelTask} />
       </section>
 
       <footer className="footer">
