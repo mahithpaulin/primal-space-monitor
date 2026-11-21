@@ -21,12 +21,16 @@ export async function POST(request) {
     const metrics = sanitizeMetrics(body.metrics || {});
     const worker = sanitizeWorker(body.worker || {});
     const cliVersion = cleanString(body.cli_version, 32);
+    const workloads = Array.isArray(body.workloads)
+      ? body.workloads.filter((item) => typeof item === 'string' && item.length > 0 && item.length <= 64).slice(0, 16)
+      : [];
 
     device.metrics = metrics;
     device.worker = worker;
     device.last_heartbeat = now;
     device.disconnected_at = null;
     if (cliVersion) device.cli_version = cliVersion;
+    if (workloads.length) device.workloads = workloads;
 
     return {
       ok: true,

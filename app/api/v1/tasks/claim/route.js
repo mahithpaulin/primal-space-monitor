@@ -20,9 +20,13 @@ export async function POST(request) {
   }
 
   const now = Date.now();
-  const supported = Array.isArray(body.workloads)
+  const requested = Array.isArray(body.workloads)
     ? body.workloads.filter((item) => typeof item === 'string' && item.length > 0 && item.length <= 64)
-    : null;
+    : [];
+  const stored = Array.isArray(state.devices[deviceId]?.workloads)
+    ? state.devices[deviceId].workloads.filter((item) => typeof item === 'string' && item.length > 0)
+    : [];
+  const supported = stored.length ? stored : requested.length ? requested : null;
   const existing = Object.values(state.tasks).find(
     (task) => task.claimed_by === deviceId && ['claimed', 'executing'].includes(task.status)
   );
