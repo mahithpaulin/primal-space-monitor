@@ -1,8 +1,33 @@
 'use server';
 
 import crypto from 'node:crypto';
+import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { issueTask, cancelTask } from '../lib/actions.js';
+import { ADMIN_COOKIE, adminKey, safeEqual } from '../lib/admin.js';
+
+export async function adminLoginAction(key) {
+  const expected = adminKey();
+  if (!expected) return { ok: true };
+  if (!key || !safeEqual(String(key), expected)) {
+    return { ok: false, error: 'Invalid operator key.' };
+  }
+  const store = await cookies();
+  store.set(ADMIN_COOKIE, expected, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: true,
+    path: '/',
+    maxAge: 60 * 60 * 12,
+  });
+  return { ok: true };
+}
+
+export async function adminLogoutAction() {
+  const store = await cookies();
+  store.delete(ADMIN_COOKIE);
+  return { ok: true };
+}
 
 export async function enqueueBenchmarkAction({ deviceId = null, iterations = 200000, chunks = 8 }) {
   try {

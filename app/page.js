@@ -1,11 +1,23 @@
+import { cookies } from 'next/headers';
 import { readState } from '../lib/store.js';
 import { deviceView, summarize } from '../lib/status.js';
 import { taskView } from '../lib/tasks.js';
+import { ADMIN_COOKIE, adminKey, safeEqual } from '../lib/admin.js';
+import AdminGate from './admin-gate.js';
 import Dashboard from './dashboard.js';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Page() {
+  const expected = adminKey();
+  if (expected) {
+    const store = await cookies();
+    const provided = store.get(ADMIN_COOKIE)?.value ?? null;
+    if (!provided || !safeEqual(provided, expected)) {
+      return <AdminGate />;
+    }
+  }
+
   const state = await readState();
   const now = Date.now();
   const devices = Object.values(state.devices)

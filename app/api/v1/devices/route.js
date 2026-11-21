@@ -1,10 +1,15 @@
 import { readState } from '../../../../lib/store.js';
 import { deviceView, summarize } from '../../../../lib/status.js';
-import { json } from '../../../../lib/http.js';
+import { adminGateResponse, isAdminRequest } from '../../../../lib/admin.js';
+import { json, fail } from '../../../../lib/http.js';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request) {
+  if (!isAdminRequest(request)) {
+    const gate = adminGateResponse();
+    return fail(gate.error, gate.status);
+  }
   const state = await readState();
   const now = Date.now();
   return json({

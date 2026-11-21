@@ -2,11 +2,16 @@ import { readState } from '../../../../lib/store.js';
 import { taskView, WORKLOADS } from '../../../../lib/tasks.js';
 import { createTask } from '../../../../lib/tasks.js';
 import { withState, pruneTasks } from '../../../../lib/store.js';
+import { adminGateResponse, isAdminRequest } from '../../../../lib/admin.js';
 import { cleanString, json, fail, readJson } from '../../../../lib/http.js';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request) {
+  if (!isAdminRequest(request)) {
+    const gate = adminGateResponse();
+    return fail(gate.error, gate.status);
+  }
   const state = await readState();
   const url = new URL(request.url);
   const deviceId = url.searchParams.get('device_id');
