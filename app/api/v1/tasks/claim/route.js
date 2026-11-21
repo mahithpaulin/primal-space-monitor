@@ -20,6 +20,9 @@ export async function POST(request) {
   }
 
   const now = Date.now();
+  const supported = Array.isArray(body.workloads)
+    ? body.workloads.filter((item) => typeof item === 'string' && item.length > 0 && item.length <= 64)
+    : null;
   const existing = Object.values(state.tasks).find(
     (task) => task.claimed_by === deviceId && ['claimed', 'executing'].includes(task.status)
   );
@@ -44,6 +47,7 @@ export async function POST(request) {
 
   const pending = Object.values(state.tasks)
     .filter((task) => (task.device_id === deviceId || task.device_id === null) && task.status === 'pending')
+    .filter((task) => !supported || supported.includes(task.workload))
     .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))[0];
 
   if (!pending) {
