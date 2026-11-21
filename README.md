@@ -22,14 +22,15 @@ store, so no external database account is required for v0.1.
 | POST | `/api/v1/heartbeat` | device bearer token | Update metrics and worker state |
 | GET | `/api/v1/devices` | none (read-only) | Device list + summary |
 | GET | `/api/v1/devices/{id}` | none (read-only) | Device detail + recent tasks |
-| POST | `/api/v1/tasks` | `X-Primal-Admin-Key` | Queue a task |
+| POST | `/api/v1/tasks` | none | Queue a task; omit `device_id` for any worker |
 | POST | `/api/v1/tasks/claim` | device bearer token | Claim the next pending task |
 | POST | `/api/v1/tasks/result` | device bearer token | Submit and verify a result |
 | GET | `/api/v1/tasks/{id}` | none (read-only) | Task status / cancellation flag |
-| POST | `/api/v1/tasks/{id}` | `X-Primal-Admin-Key` | Request cancellation |
+| POST | `/api/v1/tasks/{id}` | none | Request cancellation |
 | POST | `/api/v1/disconnect` | device bearer token | Mark device offline immediately |
 
-Task queueing and cancellation are open in this low-level v0.1 experiment.
+Task queueing and cancellation are open in this low-level v0.1 experiment. A task
+without `device_id` remains pending until any eligible worker claims it.
 ## Environment variables
 
 See `.env.example`.

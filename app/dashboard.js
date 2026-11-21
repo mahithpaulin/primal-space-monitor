@@ -178,7 +178,7 @@ function DeviceCard({ device, pending, onQueue, onCancel }) {
 
 function TaskTable({ tasks, pending, onCancel }) {
   if (!tasks.length) {
-    return <p className="muted empty">No tasks yet. Queue a benchmark from a connected device.</p>;
+    return           <p className="muted empty">No tasks yet. Use Queue task above; any eligible worker can claim it.</p>;
   }
   return (
     <div className="table-wrap">
@@ -239,6 +239,8 @@ export default function Dashboard({ initialDevices, initialTasks, initialSummary
   const [summary, setSummary] = useState(initialSummary);
   const [notice, setNotice] = useState(null);
   const [error, setError] = useState(null);
+  const [iterations, setIterations] = useState(200000);
+  const [chunks, setChunks] = useState(8);
   const [lastUpdated, setLastUpdated] = useState(Date.now());
   const [pending, startTransition] = useTransition();
 
@@ -275,9 +277,9 @@ export default function Dashboard({ initialDevices, initialTasks, initialSummary
     };
   }, []);
 
-  function queueBenchmark(deviceId) {
+  function queueBenchmark(deviceId = null) {
     startTransition(async () => {
-      const result = await enqueueBenchmarkAction({ deviceId });
+      const result = await enqueueBenchmarkAction({ deviceId, iterations, chunks });
       setNotice(result.ok ? result.message : result.error);
       if (result.ok) refresh();
     });
@@ -311,6 +313,29 @@ export default function Dashboard({ initialDevices, initialTasks, initialSummary
             {error ? 'API error' : 'live'}
           </span>
           <span className="muted small">updated {formatAge(new Date(lastUpdated).toISOString())}</span>
+          <input
+            className="task-input"
+            type="number"
+            min="1"
+            max="500000"
+            value={iterations}
+            onChange={(event) => setIterations(event.target.value)}
+            aria-label="Iterations"
+            title="Iterations"
+          />
+          <input
+            className="task-input task-input-small"
+            type="number"
+            min="1"
+            max="64"
+            value={chunks}
+            onChange={(event) => setChunks(event.target.value)}
+            aria-label="Chunks"
+            title="Chunks"
+          />
+          <button type="button" className="primary" disabled={pending} onClick={() => queueBenchmark()}>
+            Queue task
+          </button>
           <button type="button" className="ghost" onClick={refresh}>
             Refresh
           </button>
@@ -339,7 +364,7 @@ export default function Dashboard({ initialDevices, initialTasks, initialSummary
       <section className="section">
         <div className="section-head">
           <h2>Devices</h2>
-          <span className="muted small">POST /api/v1/heartbeat · every 30s</span>
+          <span className="muted small">Public queue · eligible workers claim automatically</span>
         </div>
         {devices.length ? (
           <div className="device-list">

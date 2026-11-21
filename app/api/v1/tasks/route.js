@@ -23,13 +23,12 @@ export async function POST(request) {
   const body = await readJson(request);
   if (!body) return fail('invalid_json', 400);
 
-  const deviceId = cleanString(body.device_id, 64);
-  if (!deviceId) return fail('device_id_required', 400);
+  const deviceId = body.device_id ? cleanString(body.device_id, 64) : null;
   const workload = cleanString(body.workload, 32) || 'hash_sum_v1';
   if (!WORKLOADS.includes(workload)) return fail('unsupported_workload', 400);
 
   const result = await withState((state) => {
-    if (!state.devices[deviceId]) return { error: 'device_not_found', status: 404 };
+    if (deviceId && !state.devices[deviceId]) return { error: 'device_not_found', status: 404 };
     const task = createTask({
       deviceId,
       workload,

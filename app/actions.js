@@ -4,15 +4,15 @@ import crypto from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { issueTask, cancelTask } from '../lib/actions.js';
 
-export async function enqueueBenchmarkAction({ deviceId }) {
+export async function enqueueBenchmarkAction({ deviceId = null, iterations = 200000, chunks = 8 }) {
   try {
     const task = await issueTask({
-      deviceId,
+      deviceId: deviceId || null,
       workload: 'hash_sum_v1',
       params: {
         seed: crypto.randomBytes(8).toString('hex'),
-        iterations: 200000,
-        chunks: 8,
+        iterations: Number(iterations),
+        chunks: Number(chunks),
       },
       limits: { max_cpu_pct: 20, max_memory_mb: 128, deadline_seconds: 120 },
       createdBy: 'dashboard',

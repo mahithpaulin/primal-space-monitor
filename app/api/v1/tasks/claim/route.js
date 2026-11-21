@@ -22,7 +22,7 @@ export async function POST(request) {
     const now = Date.now();
     const existing = Object.values(state.tasks).find(
       (task) =>
-        task.device_id === deviceId && ['claimed', 'executing'].includes(task.status)
+        task.claimed_by === deviceId && ['claimed', 'executing'].includes(task.status)
     );
     if (existing) {
       if (Date.parse(existing.deadline_at) < now) {
@@ -35,7 +35,7 @@ export async function POST(request) {
     }
 
     const pending = Object.values(state.tasks)
-      .filter((task) => task.device_id === deviceId && task.status === 'pending')
+      .filter((task) => (task.device_id === deviceId || task.device_id === null) && task.status === 'pending')
       .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))[0];
 
     if (!pending) return { ok: true, task: null, server_time: new Date(now).toISOString() };
@@ -50,6 +50,7 @@ export async function POST(request) {
     pending.status = 'claimed';
     pending.claimed_at = new Date(now).toISOString();
     pending.claimed_by = deviceId;
+    pending.device_id = deviceId;
     return { ok: true, task: taskView(pending, state.devices), server_time: new Date(now).toISOString() };
   });
 

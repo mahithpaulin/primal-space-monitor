@@ -132,8 +132,24 @@ input.admin-key {
   outline: none;
 }
 
-input.admin-key:focus {
+input.admin-key:focus,
+input.task-input:focus {
   border-color: rgba(125, 211, 252, 0.6);
+}
+
+input.task-input {
+  width: 100px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 12px;
+  outline: none;
+}
+
+input.task-input-small {
+  width: 64px;
 }
 
 button {
