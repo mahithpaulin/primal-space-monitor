@@ -1,6 +1,6 @@
 import { withState, pruneTasks } from '../../../../../lib/store.js';
 import { authenticateDevice } from '../../../../../lib/auth.js';
-import { hashSum, taskView } from '../../../../../lib/tasks.js';
+import { hashSum, MAX_STDOUT, taskView } from '../../../../../lib/tasks.js';
 import { cleanString, finiteNumber, json, fail, readJson } from '../../../../../lib/http.js';
 
 export const dynamic = 'force-dynamic';
@@ -70,6 +70,26 @@ export async function POST(request) {
       task.completed_at = now;
       pruneTasks(state);
       return { ok: true, task: taskView(task, state.devices), cancelled: true };
+    }
+
+    if (task.workload === 'python_func') {
+      let resultValue = body.result?.value ?? null;
+      try {
+        const serialized = JSON.stringify(resultValue);
+        if (serialized && Buffer.byteLength(serialized, 'utf8') > 8192) {
+          resultValue = { truncated: true, preview: serialized.slice(0, 8192) };
+        }
+      } catch {
+        resultValue = null;
+      }
+      task.result_value = resultValue;
+      task.stdout = typeof body.stdout === 'string' ? body.stdout.slice(0, MAX_STDOUT) : null;
+      task.verified = null;
+      task.status = 'completed';
+      task.error = null;
+      task.completed_at = now;
+      pruneTasks(state);
+      return { ok: true, verified: null, task: taskView(task, state.devices) };
     }
 
     const expected = hashSum(task.params);

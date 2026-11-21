@@ -384,6 +384,39 @@ button.ghost {
   margin-top: 2px;
 }
 
+.python-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  background: var(--panel);
+}
+
+.python-code {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 12px;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.python-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.output-cell {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .table-wrap {
   overflow-x: auto;
   border: 1px solid var(--border);

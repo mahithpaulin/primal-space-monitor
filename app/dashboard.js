@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
-import { enqueueBenchmarkAction, cancelTaskAction } from './actions.js';
+import { enqueueBenchmarkAction, enqueuePythonAction, cancelTaskAction } from './actions.js';
 
 const STATUS_LABELS = {
   registered: 'Registered',
@@ -186,6 +186,7 @@ function TaskTable({ tasks, pending, onCancel }) {
         <thead>
           <tr>
             <th>Task</th>
+            <th>Workload</th>
             <th>Device</th>
             <th>Status</th>
             <th>Verified</th>
@@ -193,6 +194,7 @@ function TaskTable({ tasks, pending, onCancel }) {
             <th>Worker CPU</th>
             <th>RSS peak</th>
             <th>Result</th>
+            <th>Output</th>
             <th>Created</th>
             <th />
           </tr>
@@ -201,6 +203,7 @@ function TaskTable({ tasks, pending, onCancel }) {
           {tasks.map((task) => (
             <tr key={task.id}>
               <td className="mono">{shortId(task.id)}</td>
+              <td>{task.workload}</td>
               <td>{task.device_name || shortId(task.device_id)}</td>
               <td>
                 <span className={`task-status task-${task.status}`}>{task.status}</span>
@@ -211,7 +214,8 @@ function TaskTable({ tasks, pending, onCancel }) {
               <td>{task.duration_ms !== null && task.duration_ms !== undefined ? `${(task.duration_ms / 1000).toFixed(2)}s` : '—'}</td>
               <td>{task.metrics?.worker_cpu_pct_avg !== null && task.metrics?.worker_cpu_pct_avg !== undefined ? `${task.metrics.worker_cpu_pct_avg}%` : '—'}</td>
               <td>{task.metrics?.rss_mb_peak !== null && task.metrics?.rss_mb_peak !== undefined ? `${task.metrics.rss_mb_peak} MB` : '—'}</td>
-              <td className="mono">{task.result_value ?? '—'}</td>
+              <td className="mono">{task.result_value === null || task.result_value === undefined ? '—' : JSON.stringify(task.result_value)}</td>
+              <td className="mono output-cell" title={task.stdout || ''}>{task.stdout || '—'}</td>
               <td className="muted">{formatTime(task.created_at)}</td>
               <td>
                 {['pending', 'claimed', 'executing'].includes(task.status) ? (
@@ -241,6 +245,9 @@ export default function Dashboard({ initialDevices, initialTasks, initialSummary
   const [error, setError] = useState(null);
   const [iterations, setIterations] = useState(200000);
   const [chunks, setChunks] = useState(8);
+  const [pythonCode, setPythonCode] = useState('def main(args):\n    print(args)\n    return {"ok": True, "args": args}');
+  const [pythonArgs, setPythonArgs] = useState('{"message":"hello"}');
+  const [pythonSeconds, setPythonSeconds] = useState(10);
   const [lastUpdated, setLastUpdated] = useState(Date.now());
   const [pending, startTransition] = useTransition();
 
@@ -280,6 +287,26 @@ export default function Dashboard({ initialDevices, initialTasks, initialSummary
   function queueBenchmark(deviceId = null) {
     startTransition(async () => {
       const result = await enqueueBenchmarkAction({ deviceId, iterations, chunks });
+      setNotice(result.ok ? result.message : result.error);
+      if (result.ok) refresh();
+    });
+  }
+
+  function runPython(deviceId = null) {
+    startTransition(async () => {
+      let args;
+      try {
+        args = JSON.parse(pythonArgs || 'null');
+      } catch {
+        setNotice('Python args must be valid JSON.');
+        return;
+      }
+      const result = await enqueuePythonAction({
+        deviceId,
+        code: pythonCode,
+        args,
+        maxSeconds: pythonSeconds,
+      });
       setNotice(result.ok ? result.message : result.error);
       if (result.ok) refresh();
     });
@@ -391,8 +418,29 @@ export default function Dashboard({ initialDevices, initialTasks, initialSummary
 
       <section className="section">
         <div className="section-head">
+          <h2>Python console</h2>
+          <span className="muted small">restricted python_func workload</span>
+        </div>
+        <div className="python-panel">
+          <textarea
+            className="python-code"
+            value={pythonCode}
+            onChange={(event) => setPythonCode(event.target.value)}
+            spellCheck={false}
+            aria-label="Python code"
+          />
+          <div className="python-controls">
+            <input className="task-input" value={pythonArgs} onChange={(event) => setPythonArgs(event.target.value)} aria-label="Python args JSON" />
+            <input className="task-input task-input-small" type="number" min="1" max="30" value={pythonSeconds} onChange={(event) => setPythonSeconds(event.target.value)} aria-label="Python timeout seconds" />
+            <button type="button" className="primary" disabled={pending} onClick={() => runPython()}>Run on any device</button>
+          </div>
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="section-head">
           <h2>Tasks</h2>
-          <span className="muted small">deterministic hash_sum_v1 workload</span>
+          <span className="muted small">hash_sum_v1 and restricted python_func workloads</span>
         </div>
         <TaskTable tasks={tasks} pending={pending} onCancel={cancelTask} />
       </section>
