@@ -94,7 +94,9 @@ function DeviceCard({ device, adminKey, pending, onQueue, onCancel }) {
           <dt>CPU</dt>
           <dd>
             {device.cpu_arch || '—'} · {device.cpu_cores ?? '—'} cores ·{' '}
-            {formatPct(metrics.cpu_usage_pct)} used
+            {metrics.cpu_usage_pct !== null && metrics.cpu_usage_pct !== undefined
+              ? `${formatPct(metrics.cpu_usage_pct)} used`
+              : `load ${formatPct(metrics.cpu_load_pct)} (util unavailable)`}
           </dd>
         </div>
         <div>
@@ -188,6 +190,8 @@ function TaskTable({ tasks, adminKey, pending, onCancel }) {
             <th>Status</th>
             <th>Verified</th>
             <th>Duration</th>
+            <th>Worker CPU</th>
+            <th>RSS peak</th>
             <th>Result</th>
             <th>Created</th>
             <th />
@@ -205,6 +209,8 @@ function TaskTable({ tasks, adminKey, pending, onCancel }) {
                 {task.verified === true ? 'yes' : task.verified === false ? 'no' : '—'}
               </td>
               <td>{task.duration_ms !== null && task.duration_ms !== undefined ? `${(task.duration_ms / 1000).toFixed(2)}s` : '—'}</td>
+              <td>{task.metrics?.worker_cpu_pct_avg !== null && task.metrics?.worker_cpu_pct_avg !== undefined ? `${task.metrics.worker_cpu_pct_avg}%` : '—'}</td>
+              <td>{task.metrics?.rss_mb_peak !== null && task.metrics?.rss_mb_peak !== undefined ? `${task.metrics.rss_mb_peak} MB` : '—'}</td>
               <td className="mono">{task.result_value ?? '—'}</td>
               <td className="muted">{formatTime(task.created_at)}</td>
               <td>

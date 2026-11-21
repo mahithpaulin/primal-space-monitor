@@ -36,6 +36,8 @@ export async function POST(request) {
     task.duration_ms = duration === null ? null : Math.round(duration);
     task.metrics = {
       cpu_pct_avg: finiteNumber(body.metrics?.cpu_pct_avg, 0, 100),
+      cpu_load_pct: finiteNumber(body.metrics?.cpu_load_pct, 0, 1000),
+      worker_cpu_pct_avg: finiteNumber(body.metrics?.worker_cpu_pct_avg, 0, 1000),
       rss_mb_peak: finiteNumber(body.metrics?.rss_mb_peak, 0, 4096),
     };
 
