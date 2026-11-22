@@ -61,13 +61,15 @@ vercel deploy --prod --yes
 ## Security notes and limitations
 
 - Registration is protected by a shared enrollment key, not per-user accounts.
-- The dashboard and read-only device/task GET endpoints are public in v0.1.
-- State is a single JSON object in private Blob storage. Concurrent writes from
-  multiple serverless instances can race. This is acceptable for a single-device
-  experiment but is not a production database.
+- The dashboard and device/task/job/message endpoints require the operator key.
+- State is a single JSON object stored in Neon Postgres (with private Blob
+  fallback). Writes are serialized with a Postgres advisory lock.
 - Device metrics are self-reported by the device and are not attested.
-- No arbitrary code, shell, or downloaded binaries are ever executed by this
-  service. Only the allow-listed `hash_sum_v1` workload is accepted.
+- Task creation is operator-gated (admin key). The allow-listed workloads are
+  `python` (sandboxed, safe-stdlib imports only), `shell` (operator-only
+  `sh -c`, CPU/time limited), and `http` (device-side request).
+- The service never downloads or executes remote binaries; all execution happens
+  on the enrolled device.
 
 ## License
 
