@@ -2,11 +2,11 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import {
-  enqueueBenchmarkAction,
-  enqueuePythonAction,
+  enqueueTaskAction,
   cancelTaskAction,
   enqueueJobAction,
   cancelJobAction,
+  sendMessageAction,
 } from './actions.js';
 
 const STATUS_LABELS = {
@@ -14,6 +14,12 @@ const STATUS_LABELS = {
   connected: 'Connected',
   executing: 'Executing task',
   offline: 'Offline',
+};
+
+const WORKLOAD_LABELS = {
+  python: 'Python function',
+  shell: 'Shell command',
+  http: 'HTTP request',
 };
 
 function formatMb(value) {
@@ -45,6 +51,17 @@ function shortId(id) {
   return id ? id.slice(0, 8) : '—';
 }
 
+function preview(value, limit = 160) {
+  if (value === null || value === undefined) return '—';
+  let text;
+  try {
+    text = JSON.stringify(value);
+  } catch {
+    text = String(value);
+  }
+  return text.length > limit ? `${text.slice(0, limit)}…` : text;
+}
+
 function StatusPill({ status }) {
   return (
     <span className={`pill status-${status}`}>
@@ -64,7 +81,7 @@ function StatCard({ label, value, detail }) {
   );
 }
 
-function DeviceCard({ device, pending, onQueue, onCancel }) {
+function DeviceCard({ device, pending, onCancel, onTarget }) {
   const metrics = device.metrics || {};
   const worker = device.worker || {};
   const ramTotal = metrics.ram_total_mb;
@@ -74,10 +91,7 @@ function DeviceCard({ device, pending, onQueue, onCancel }) {
       ? Math.max(0, ramTotal - ramAvailable)
       : null;
   const ramPct = ramTotal ? Math.min(100, Math.max(0, (ramUsed / ramTotal) * 100)) : 0;
-  const activeTask = ['claimed', 'executing'].includes(
-    device.status === 'executing' ? 'executing' : ''
-  );
-  const canQueue = ['connected', 'executing'].includes(device.status);
+  const canTarget = ['connected', 'executing'].includes(device.status);
 
   return (
     <article className="device-card">
@@ -93,8 +107,8 @@ function DeviceCard({ device, pending, onQueue, onCancel }) {
 
       <dl className="device-grid">
         <div>
-          <dt>Android</dt>
-          <dd>{device.android_version ? `Android ${device.android_version}` : '—'}</dd>
+          <dt>Platform</dt>
+          <dd>{device.cli_version || device.android_version ? device.cli_version || `Android ${device.android_version}` : '—'}</dd>
         </div>
         <div>
           <dt>CPU</dt>
@@ -102,7 +116,7 @@ function DeviceCard({ device, pending, onQueue, onCancel }) {
             {device.cpu_arch || '—'} · {device.cpu_cores ?? '—'} cores ·{' '}
             {metrics.cpu_usage_pct !== null && metrics.cpu_usage_pct !== undefined
               ? `${formatPct(metrics.cpu_usage_pct)} used`
-              : `load ${formatPct(metrics.cpu_load_pct)} (util unavailable)`}
+              : `load ${formatPct(metrics.cpu_load_pct)}`}
           </dd>
         </div>
         <div>
@@ -113,10 +127,6 @@ function DeviceCard({ device, pending, onQueue, onCancel }) {
           </dd>
         </div>
         <div>
-          <dt>Storage free</dt>
-          <dd>{formatMb(metrics.storage_free_mb)}</dd>
-        </div>
-        <div>
           <dt>Battery</dt>
           <dd>
             {formatPct(metrics.battery_pct)}
@@ -124,14 +134,8 @@ function DeviceCard({ device, pending, onQueue, onCancel }) {
           </dd>
         </div>
         <div>
-          <dt>Network</dt>
-          <dd>
-            {metrics.network_connected === true
-              ? metrics.network_type || 'connected'
-              : metrics.network_connected === false
-                ? 'offline'
-                : '—'}
-          </dd>
+          <dt>Workloads</dt>
+          <dd>{(device.workloads || []).join(', ') || '—'}</dd>
         </div>
         <div>
           <dt>Last heartbeat</dt>
@@ -142,7 +146,6 @@ function DeviceCard({ device, pending, onQueue, onCancel }) {
           <dd>
             {worker.status || 'stopped'}
             {worker.compute_enabled ? ' · enabled' : ' · compute disabled'}
-            {worker.paused ? ' · paused' : ''}
           </dd>
         </div>
       </dl>
@@ -152,13 +155,8 @@ function DeviceCard({ device, pending, onQueue, onCancel }) {
       </div>
 
       <div className="device-actions">
-        <button
-          type="button"
-          className="primary"
-          disabled={!canQueue || pending}
-          onClick={() => onQueue(device.id)}
-        >
-          Queue benchmark
+        <button type="button" className="ghost" disabled={!canTarget} onClick={() => onTarget(device.id)}>
+          Message device
         </button>
         {worker.current_task_id ? (
           <button
@@ -171,11 +169,7 @@ function DeviceCard({ device, pending, onQueue, onCancel }) {
           </button>
         ) : null}
         <span className="muted small">
-          {device.status === 'offline'
-            ? `Offline after ${device.offline_after_seconds}s without heartbeat`
-            : canQueue
-              ? 'Compute requires local opt-in on the device'
-              : 'Waiting for first heartbeat'}
+          {device.status === 'offline' ? 'Offline · waiting for heartbeat' : 'Compute requires local opt-in'}
         </span>
       </div>
     </article>
@@ -184,7 +178,7 @@ function DeviceCard({ device, pending, onQueue, onCancel }) {
 
 function TaskTable({ tasks, pending, onCancel }) {
   if (!tasks.length) {
-    return           <p className="muted empty">No tasks yet. Use Queue task above; any eligible worker can claim it.</p>;
+    return <p className="muted empty">No standalone tasks yet. Launch one above; any eligible worker can claim it.</p>;
   }
   return (
     <div className="table-wrap">
@@ -195,10 +189,7 @@ function TaskTable({ tasks, pending, onCancel }) {
             <th>Workload</th>
             <th>Device</th>
             <th>Status</th>
-            <th>Verified</th>
             <th>Duration</th>
-            <th>Worker CPU</th>
-            <th>RSS peak</th>
             <th>Result</th>
             <th>Output</th>
             <th>Created</th>
@@ -209,28 +200,18 @@ function TaskTable({ tasks, pending, onCancel }) {
           {tasks.map((task) => (
             <tr key={task.id}>
               <td className="mono">{shortId(task.id)}</td>
-              <td>{task.workload}</td>
+              <td>{WORKLOAD_LABELS[task.workload] || task.workload}</td>
               <td>{task.device_name || shortId(task.device_id)}</td>
               <td>
                 <span className={`task-status task-${task.status}`}>{task.status}</span>
               </td>
-              <td>
-                {task.verified === true ? 'yes' : task.verified === false ? 'no' : '—'}
-              </td>
               <td>{task.duration_ms !== null && task.duration_ms !== undefined ? `${(task.duration_ms / 1000).toFixed(2)}s` : '—'}</td>
-              <td>{task.metrics?.worker_cpu_pct_avg !== null && task.metrics?.worker_cpu_pct_avg !== undefined ? `${task.metrics.worker_cpu_pct_avg}%` : '—'}</td>
-              <td>{task.metrics?.rss_mb_peak !== null && task.metrics?.rss_mb_peak !== undefined ? `${task.metrics.rss_mb_peak} MB` : '—'}</td>
-              <td className="mono">{task.result_value === null || task.result_value === undefined ? '—' : JSON.stringify(task.result_value)}</td>
+              <td className="mono" title={preview(task.result_value, 2000)}>{preview(task.result_value)}</td>
               <td className="mono output-cell" title={task.stdout || ''}>{task.stdout || '—'}</td>
               <td className="muted">{formatTime(task.created_at)}</td>
               <td>
                 {['pending', 'claimed', 'executing'].includes(task.status) ? (
-                  <button
-                    type="button"
-                    className="ghost small"
-                    disabled={pending}
-                    onClick={() => onCancel(task.id)}
-                  >
+                  <button type="button" className="ghost small" disabled={pending} onClick={() => onCancel(task.id)}>
                     Cancel
                   </button>
                 ) : null}
@@ -242,7 +223,6 @@ function TaskTable({ tasks, pending, onCancel }) {
     </div>
   );
 }
-
 
 const JOB_STATUS = {
   pending: 'Queued',
@@ -268,15 +248,15 @@ function JobCard({ job, pending, onCancel }) {
   const done = progress.completed + progress.failed + progress.cancelled;
   const pct = Math.round((done / total) * 100);
   const active = ['pending', 'running', 'cancelling'].includes(job.status);
+  const summary = job.summary || {};
   return (
     <article className="job-card">
       <div className="job-head">
         <div>
-          <h3>{job.workload === 'python_func' ? 'Python job' : 'Distributed hash job'}</h3>
+          <h3>{WORKLOAD_LABELS[job.workload] || job.workload} job</h3>
           <p className="muted small">
             {shortId(job.id)} · {job.shard_count} shard{job.shard_count === 1 ? '' : 's'}
-            {job.total_iterations ? ` · ${job.total_iterations.toLocaleString()} iterations` : ''} ·{' '}
-            {formatAge(job.created_at)}
+            {job.item_count ? ` · ${job.item_count} items` : ''} · reduce {job.reduce} · {formatAge(job.created_at)}
           </p>
         </div>
         <div className="job-actions">
@@ -291,6 +271,8 @@ function JobCard({ job, pending, onCancel }) {
           ) : null}
         </div>
       </div>
+      {summary.command ? <p className="mono small muted">$ {summary.command}</p> : null}
+      {summary.url ? <p className="mono small muted">{summary.method} {summary.url}</p> : null}
       <div className="progress" aria-label={`${pct}% complete`}>
         <div className="progress-bar" style={{ width: `${pct}%` }} />
       </div>
@@ -300,9 +282,10 @@ function JobCard({ job, pending, onCancel }) {
           {progress.executing || progress.claimed ? ` · ${progress.executing + progress.claimed} running` : ''}
           {progress.failed ? ` · ${progress.failed} failed` : ''}
         </span>
-        <span className="muted small">
-          {job.aggregate && job.aggregate.value !== null ? `result ${job.aggregate.value}` : 'aggregating…'}
-          {job.aggregate && job.aggregate.verified === true ? ' · verified' : ''}
+        <span className="muted small" title={preview(job.aggregate?.value ?? job.aggregate?.partial_value, 2000)}>
+          {job.aggregate && (job.aggregate.value !== null || job.aggregate.partial_value !== null)
+            ? `result ${preview(job.aggregate.value ?? job.aggregate.partial_value, 80)}`
+            : 'aggregating…'}
         </span>
       </div>
       <div className="shard-grid">
@@ -321,38 +304,71 @@ function JobCard({ job, pending, onCancel }) {
   );
 }
 
-export default function Dashboard({ initialDevices, initialTasks, initialJobs = [], initialSummary }) {
+function MessageFeed({ messages, devices }) {
+  if (!messages.length) return <p className="muted empty">No messages yet. Say hello to a device.</p>;
+  const name = (id) => {
+    if (!id) return 'all devices';
+    if (id === 'operator') return 'Operator';
+    return devices.find((device) => device.id === id)?.name || shortId(id);
+  };
+  return (
+    <ul className="message-list">
+      {messages.map((message) => (
+        <li key={message.id} className="message">
+          <div className="message-head">
+            <span className="mono small">{name(message.from)} → {name(message.to)}</span>
+            <span className="muted small">{formatAge(message.created_at)}</span>
+          </div>
+          <p className="message-body">{message.body}</p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export default function Dashboard({ initialDevices, initialTasks, initialJobs = [], initialMessages = [], initialSummary }) {
   const [devices, setDevices] = useState(initialDevices);
   const [tasks, setTasks] = useState(initialTasks);
   const [jobs, setJobs] = useState(initialJobs);
-  const [jobIterations, setJobIterations] = useState(600000);
-  const [jobShards, setJobShards] = useState(12);
+  const [messages, setMessages] = useState(initialMessages);
   const [summary, setSummary] = useState(initialSummary);
   const [notice, setNotice] = useState(null);
   const [error, setError] = useState(null);
-  const [iterations, setIterations] = useState(200000);
-  const [chunks, setChunks] = useState(8);
-  const [pythonCode, setPythonCode] = useState('def main(args):\n    print(args)\n    return {"ok": True, "args": args}');
-  const [pythonArgs, setPythonArgs] = useState('{"message":"hello"}');
-  const [pythonSeconds, setPythonSeconds] = useState(10);
+
+  const [workload, setWorkload] = useState('python');
+  const [target, setTarget] = useState('any');
+  const [shards, setShards] = useState(4);
+  const [reduce, setReduce] = useState('concat');
+  const [code, setCode] = useState('def main(items):\n    return items');
+  const [command, setCommand] = useState('echo "$PRIMAL_ITEMS"');
+  const [method, setMethod] = useState('GET');
+  const [url, setUrl] = useState('https://api.github.com/repos/mahithpaulin/primalspace-android');
+  const [items, setItems] = useState('');
+
+  const [composeTo, setComposeTo] = useState('');
+  const [composeBody, setComposeBody] = useState('');
+
   const [lastUpdated, setLastUpdated] = useState(Date.now());
   const [pending, startTransition] = useTransition();
 
   async function refresh() {
     try {
-      const [devicesResponse, tasksResponse, jobsResponse] = await Promise.all([
+      const [devicesResponse, tasksResponse, jobsResponse, messagesResponse] = await Promise.all([
         fetch('/api/v1/devices', { cache: 'no-store' }),
         fetch('/api/v1/tasks?limit=20', { cache: 'no-store' }),
         fetch('/api/v1/jobs?limit=12', { cache: 'no-store' }),
+        fetch('/api/v1/messages?limit=30', { cache: 'no-store' }),
       ]);
       if (!devicesResponse.ok || !tasksResponse.ok) throw new Error('Monitor API unavailable');
       const devicesPayload = await devicesResponse.json();
       const tasksPayload = await tasksResponse.json();
       const jobsPayload = jobsResponse.ok ? await jobsResponse.json() : { jobs: [] };
+      const messagesPayload = messagesResponse.ok ? await messagesResponse.json() : { messages: [] };
       setDevices(devicesPayload.devices || []);
       setSummary(devicesPayload.summary || {});
       setTasks(tasksPayload.tasks || []);
       setJobs(jobsPayload.jobs || []);
+      setMessages(messagesPayload.messages || []);
       setLastUpdated(Date.now());
       setError(null);
     } catch (fetchError) {
@@ -374,43 +390,57 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
     };
   }, []);
 
-  function queueBenchmark(deviceId = null) {
-    startTransition(async () => {
-      const result = await enqueueBenchmarkAction({ deviceId, iterations, chunks });
-      setNotice(result.ok ? result.message : result.error);
-      if (result.ok) refresh();
-    });
-  }
-
-  function runPython(deviceId = null) {
-    startTransition(async () => {
-      let args;
+  function buildParams() {
+    let parsedItems;
+    if (items.trim()) {
       try {
-        args = JSON.parse(pythonArgs || 'null');
+        parsedItems = JSON.parse(items);
       } catch {
-        setNotice('Python args must be valid JSON.');
-        return;
+        return { error: 'Items must be valid JSON.' };
       }
-      const result = await enqueuePythonAction({
-        deviceId,
-        code: pythonCode,
-        args,
-        maxSeconds: pythonSeconds,
-      });
+      if (!Array.isArray(parsedItems)) return { error: 'Items must be a JSON array.' };
+    }
+    if (workload === 'python') {
+      return { params: { code, ...(parsedItems ? { items: parsedItems } : {}) } };
+    }
+    if (workload === 'shell') {
+      return { params: { command, ...(parsedItems ? { items: parsedItems } : {}) } };
+    }
+    return { params: { method, url } };
+  }
+
+  function runTask() {
+    const built = buildParams();
+    if (built.error) {
+      setNotice(built.error);
+      return;
+    }
+    startTransition(async () => {
+      const result =
+        target === 'distributed'
+          ? await enqueueJobAction({ workload, params: built.params, shards: Number(shards) || 1, reduce })
+          : await enqueueTaskAction({
+              workload,
+              params: built.params,
+              deviceId: target === 'any' ? null : target,
+            });
       setNotice(result.ok ? result.message : result.error);
       if (result.ok) refresh();
     });
   }
 
-  function runJob() {
+  function sendMessage() {
+    if (!composeBody.trim()) {
+      setNotice('Message body is empty.');
+      return;
+    }
     startTransition(async () => {
-      const result = await enqueueJobAction({
-        workload: 'hash_sum_v1',
-        params: { iterations: Number(jobIterations) || 600000, chunks: 8 },
-        shards: Number(jobShards) || 12,
-      });
+      const result = await sendMessageAction({ to: composeTo || null, body: composeBody });
       setNotice(result.ok ? result.message : result.error);
-      if (result.ok) refresh();
+      if (result.ok) {
+        setComposeBody('');
+        refresh();
+      }
     });
   }
 
@@ -442,7 +472,7 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
             <span className="brand-mark" />
             PRIMAL SPACE
           </div>
-          <p className="muted">Device connection test · v0.1</p>
+          <p className="muted">Operator console · arbitrary tasks across your devices</p>
         </div>
         <div className="topbar-right">
           <span className={`live ${error ? 'live-error' : ''}`}>
@@ -450,29 +480,6 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
             {error ? 'API error' : 'live'}
           </span>
           <span className="muted small">updated {formatAge(new Date(lastUpdated).toISOString())}</span>
-          <input
-            className="task-input"
-            type="number"
-            min="1"
-            max="500000"
-            value={iterations}
-            onChange={(event) => setIterations(event.target.value)}
-            aria-label="Iterations"
-            title="Iterations"
-          />
-          <input
-            className="task-input task-input-small"
-            type="number"
-            min="1"
-            max="64"
-            value={chunks}
-            onChange={(event) => setChunks(event.target.value)}
-            aria-label="Chunks"
-            title="Chunks"
-          />
-          <button type="button" className="primary" disabled={pending} onClick={() => queueBenchmark()}>
-            Queue task
-          </button>
           <button type="button" className="ghost" onClick={refresh}>
             Refresh
           </button>
@@ -500,62 +507,125 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
 
       <section className="section">
         <div className="section-head">
-          <h2>Devices</h2>
-          <span className="muted small">Public queue · eligible workers claim automatically</span>
+          <h2>Launch a task</h2>
+          <span className="muted small">run on one device, any device, or split into parallel shards</span>
         </div>
-        {devices.length ? (
-          <div className="device-list">
+        <div className="task-form">
+          <label className="muted small" htmlFor="task-workload">Workload</label>
+          <select
+            id="task-workload"
+            className="task-input"
+            value={workload}
+            onChange={(event) => {
+              const next = event.target.value;
+              setWorkload(next);
+              if (next === 'http' && target === 'distributed') setTarget('any');
+            }}
+          >
+            <option value="python">Python function</option>
+            <option value="shell">Shell command</option>
+            <option value="http">HTTP request</option>
+          </select>
+
+          <label className="muted small" htmlFor="task-target">Target</label>
+          <select
+            id="task-target"
+            className="task-input"
+            value={target}
+            onChange={(event) => setTarget(event.target.value)}
+          >
+            <option value="any">Any eligible device</option>
+            {workload === 'http' ? null : <option value="distributed">Distribute across devices</option>}
             {devices.map((device) => (
-              <DeviceCard
-                key={device.id}
-                device={device}
-                pending={pending}
-                onQueue={queueBenchmark}
-                onCancel={cancelTask}
-              />
+              <option key={device.id} value={device.id}>
+                {device.name} ({device.status})
+              </option>
             ))}
-          </div>
-        ) : (
-          <div className="empty-card">
-            <h3>No devices registered yet</h3>
-            <p className="muted">
-              On the phone: <code>primal init --server &lt;this-url&gt;</code> then{' '}
-              <code>primal connect</code>.
-            </p>
-          </div>
-        )}
+          </select>
+
+          {target === 'distributed' ? (
+            <>
+              <label className="muted small" htmlFor="task-shards">Shards</label>
+              <input
+                id="task-shards"
+                className="task-input task-input-small"
+                type="number"
+                min="1"
+                max="64"
+                value={shards}
+                onChange={(event) => setShards(event.target.value)}
+              />
+              <label className="muted small" htmlFor="task-reduce">Reduce</label>
+              <select
+                id="task-reduce"
+                className="task-input"
+                value={reduce}
+                onChange={(event) => setReduce(event.target.value)}
+              >
+                <option value="concat">concat (merge lists)</option>
+                <option value="sum">sum (numbers)</option>
+                <option value="count">count (items)</option>
+                <option value="first">first shard</option>
+              </select>
+            </>
+          ) : null}
+
+          {workload === 'python' ? (
+            <textarea
+              className="python-code task-code"
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              spellCheck={false}
+              aria-label="Python code"
+            />
+          ) : null}
+          {workload === 'shell' ? (
+            <input
+              className="task-input task-wide"
+              value={command}
+              onChange={(event) => setCommand(event.target.value)}
+              aria-label="Shell command"
+            />
+          ) : null}
+          {workload === 'http' ? (
+            <>
+              <select className="task-input" value={method} onChange={(event) => setMethod(event.target.value)} aria-label="HTTP method">
+                {['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'].map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+              <input
+                className="task-input task-wide"
+                value={url}
+                onChange={(event) => setUrl(event.target.value)}
+                aria-label="URL"
+              />
+            </>
+          ) : null}
+
+          {workload === 'http' ? null : (
+            <input
+              className="task-input task-wide"
+              value={items}
+              onChange={(event) => setItems(event.target.value)}
+              placeholder='Items JSON array (optional, e.g. ["a","b","c"])'
+              aria-label="Items JSON"
+            />
+          )}
+
+          <button type="button" className="primary" disabled={pending} onClick={runTask}>
+            {target === 'distributed' ? 'Run distributed job' : 'Run task'}
+          </button>
+        </div>
+        <p className="muted small">
+          Python: define <code>main(items)</code> and return JSON. Shell: <code>$PRIMAL_ITEMS</code> holds the shard slice. HTTP: devices fetch the URL.
+        </p>
       </section>
 
       <section className="section">
         <div className="section-head">
-          <h2>Distributed jobs</h2>
-          <span className="muted small">one job → many parallel shards, auto-scheduled to every capable worker</span>
-        </div>
-        <div className="job-form">
-          <label className="muted small" htmlFor="job-iterations">Total iterations</label>
-          <input
-            id="job-iterations"
-            className="task-input"
-            type="number"
-            min="1000"
-            max="2000000"
-            step="1000"
-            value={jobIterations}
-            onChange={(event) => setJobIterations(event.target.value)}
-          />
-          <label className="muted small" htmlFor="job-shards">Shards</label>
-          <input
-            id="job-shards"
-            className="task-input task-input-small"
-            type="number"
-            min="1"
-            max="64"
-            value={jobShards}
-            onChange={(event) => setJobShards(event.target.value)}
-          />
-          <button type="button" className="primary" disabled={pending} onClick={runJob}>
-            Run distributed job
-          </button>
+          <h2>Jobs</h2>
+          <span className="muted small">one job → many shards, auto-scheduled to every capable worker</span>
         </div>
         {jobs.length ? (
           <div className="job-list">
@@ -564,43 +634,81 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
             ))}
           </div>
         ) : (
-          <p className="muted empty">No jobs yet. One job splits into shards that any eligible device can claim in parallel.</p>
+          <p className="muted empty">No jobs yet. Add items and choose “Distribute across devices”.</p>
         )}
       </section>
 
       <section className="section">
         <div className="section-head">
-          <h2>Python console</h2>
-          <span className="muted small">restricted python_func workload</span>
+          <h2>Devices</h2>
+          <span className="muted small">capabilities are advertised in each heartbeat</span>
         </div>
-        <div className="python-panel">
-          <textarea
-            className="python-code"
-            value={pythonCode}
-            onChange={(event) => setPythonCode(event.target.value)}
-            spellCheck={false}
-            aria-label="Python code"
-          />
-          <div className="python-controls">
-            <input className="task-input" value={pythonArgs} onChange={(event) => setPythonArgs(event.target.value)} aria-label="Python args JSON" />
-            <input className="task-input task-input-small" type="number" min="1" max="30" value={pythonSeconds} onChange={(event) => setPythonSeconds(event.target.value)} aria-label="Python timeout seconds" />
-            <button type="button" className="primary" disabled={pending} onClick={() => runPython()}>Run on any device</button>
+        {devices.length ? (
+          <div className="device-list">
+            {devices.map((device) => (
+              <DeviceCard
+                key={device.id}
+                device={device}
+                pending={pending}
+                onCancel={cancelTask}
+                onTarget={(deviceId) => {
+                  setComposeTo(deviceId);
+                  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                }}
+              />
+            ))}
           </div>
-        </div>
+        ) : (
+          <div className="empty-card">
+            <h3>No devices registered yet</h3>
+            <p className="muted">
+              On the phone: <code>primal init --server &lt;this-url&gt;</code> then <code>primal connect</code>.
+            </p>
+          </div>
+        )}
       </section>
 
       <section className="section">
         <div className="section-head">
-          <h2>Tasks</h2>
-          <span className="muted small">hash_sum_v1 and restricted python_func workloads</span>
+          <h2>Messages</h2>
+          <span className="muted small">device ↔ device and operator ↔ device</span>
+        </div>
+        <div className="compose">
+          <select className="task-input" value={composeTo} onChange={(event) => setComposeTo(event.target.value)} aria-label="Message target">
+            <option value="">All devices</option>
+            {devices.map((device) => (
+              <option key={device.id} value={device.id}>{device.name}</option>
+            ))}
+          </select>
+          <input
+            className="task-input task-wide"
+            value={composeBody}
+            onChange={(event) => setComposeBody(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') sendMessage();
+            }}
+            placeholder="Message body"
+            aria-label="Message body"
+          />
+          <button type="button" className="primary" disabled={pending} onClick={sendMessage}>
+            Send
+          </button>
+        </div>
+        <MessageFeed messages={messages} devices={devices} />
+      </section>
+
+      <section className="section">
+        <div className="section-head">
+          <h2>Standalone tasks</h2>
+          <span className="muted small">python · shell · http</span>
         </div>
         <TaskTable tasks={tasks.filter((task) => !task.job_id)} pending={pending} onCancel={cancelTask} />
       </section>
 
       <footer className="footer">
-        <span>Primal Space Monitor · Vercel + private Blob state</span>
+        <span>Primal Space Monitor · Vercel + Neon state</span>
         <span className="muted">
-          API: register · heartbeat · devices · tasks/claim · tasks/result · disconnect
+          API: register · heartbeat · devices · tasks · jobs · messages · peers
         </span>
       </footer>
     </main>

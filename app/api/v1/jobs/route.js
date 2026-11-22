@@ -4,7 +4,7 @@ import { jobView } from '../../../../lib/jobs.js';
 import { sweepStore } from '../../../../lib/scheduler.js';
 import { adminGateResponse, isAdminRequest } from '../../../../lib/admin.js';
 import { cleanString, json, fail, readJson } from '../../../../lib/http.js';
-import { WORKLOADS } from '../../../../lib/tasks.js';
+import { isWorkload } from '../../../../lib/workloads.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,13 +31,14 @@ export async function POST(request) {
   }
   const body = await readJson(request);
   if (!body) return fail('invalid_json', 400);
-  const workload = cleanString(body.workload, 32) || 'hash_sum_v1';
-  if (!WORKLOADS.includes(workload)) return fail('unsupported_workload', 400);
+  const workload = cleanString(body.workload, 32) || 'python';
+  if (!isWorkload(workload)) return fail('unsupported_workload', 400);
   try {
     const job = await issueJob({
       workload,
       params: body.params || {},
       shards: body.shards,
+      reduce: body.reduce,
       limits: body.resource_limits || {},
       createdBy: 'operator_api',
     });

@@ -1,0 +1,29 @@
+import { withState } from '../../../../lib/store.js';
+import { authenticateDevice } from '../../../../lib/auth.js';
+import { cleanString, json, fail } from '../../../../lib/http.js';
+import { normalizeWorkloads } from '../../../../lib/workloads.js';
+
+export const dynamic = 'force-dynamic';
+
+export async function GET(request) {
+  const url = new URL(request.url);
+  const deviceId = cleanString(url.searchParams.get('device_id'), 64);
+  if (!deviceId) return fail('device_id_required', 400);
+  const result = await withState((state) => {
+    const auth = authenticateDevice(state, request, deviceId);
+    if (auth.error) return auth;
+    const peers = Object.values(state.devices)
+      .filter((device) => device.id !== deviceId)
+      .map((device) => ({
+        id: device.id,
+        name: device.name,
+        status: device.status,
+        workloads: normalizeWorkloads(device.workloads),
+        last_heartbeat_at: device.last_heartbeat_at ?? null,
+      }))
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    return { peers };
+  });
+  if (result.error) return fail(result.error, result.status);
+  return json(result);
+}

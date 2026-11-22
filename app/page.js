@@ -3,6 +3,7 @@ import { readState } from '../lib/store.js';
 import { deviceView, summarize } from '../lib/status.js';
 import { taskView } from '../lib/tasks.js';
 import { jobView } from '../lib/jobs.js';
+import { listAll } from '../lib/messages.js';
 import { ADMIN_COOKIE, adminKey, safeEqual } from '../lib/admin.js';
 import AdminGate from './admin-gate.js';
 import Dashboard from './dashboard.js';
@@ -34,11 +35,14 @@ export default async function Page() {
     .slice(0, 12)
     .map((job) => jobView(job, state.tasks, state.devices));
 
+  const messages = listAll(state, 30);
+
   return (
     <Dashboard
       initialDevices={devices}
       initialTasks={tasks}
       initialJobs={jobs}
+      initialMessages={messages}
       initialSummary={summarize(state.devices, state.tasks, now)}
     />
   );

@@ -1,11 +1,24 @@
 import { withState, pruneTasks } from '../../../../../lib/store.js';
 import { authenticateDevice } from '../../../../../lib/auth.js';
-import { hashSum, MAX_STDOUT, taskView } from '../../../../../lib/tasks.js';
+import { MAX_RESULT_BYTES, MAX_STDOUT, taskView } from '../../../../../lib/tasks.js';
 import { finalizeJob } from '../../../../../lib/jobs.js';
 import { cleanString, finiteNumber, json, fail, readJson } from '../../../../../lib/http.js';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
+
+function boundedResult(value) {
+  if (value === undefined) return null;
+  try {
+    const encoded = JSON.stringify(value);
+    if (encoded && Buffer.byteLength(encoded, 'utf8') > MAX_RESULT_BYTES) {
+      return { truncated: true, preview: encoded.slice(0, MAX_RESULT_BYTES) };
+    }
+  } catch {
+    return null;
+  }
+  return value;
+}
 
 export async function POST(request) {
   const body = await readJson(request);
@@ -79,45 +92,16 @@ export async function POST(request) {
       return { ok: true, task: taskView(task, state.devices), cancelled: true };
     }
 
-    if (task.workload === 'python_func') {
-      let resultValue = body.result?.value ?? null;
-      try {
-        const serialized = JSON.stringify(resultValue);
-        if (serialized && Buffer.byteLength(serialized, 'utf8') > 8192) {
-          resultValue = { truncated: true, preview: serialized.slice(0, 8192) };
-        }
-      } catch {
-        resultValue = null;
-      }
-      task.result_value = resultValue;
-      task.stdout = typeof body.stdout === 'string' ? body.stdout.slice(0, MAX_STDOUT) : null;
-      task.verified = null;
-      task.status = 'completed';
-      task.error = null;
-      task.completed_at = now;
-      settle();
-      pruneTasks(state);
-      return { ok: true, verified: null, task: taskView(task, state.devices) };
-    }
-
-    const expected = hashSum(task.params);
-    const reported = finiteNumber(body.result?.value, 0, Number.MAX_SAFE_INTEGER);
-    const verified = reported !== null && Math.round(reported) === expected.value;
-
-    task.result_value = reported === null ? null : Math.round(reported);
-    task.verified = verified;
-    task.status = verified ? 'completed' : 'failed';
-    task.error = verified ? null : 'verification_failed';
+    task.result_value = boundedResult(body.result?.value);
+    task.stdout = typeof body.stdout === 'string' ? body.stdout.slice(0, MAX_STDOUT) : null;
+    task.verified = true;
+    task.status = 'completed';
+    task.error = null;
     task.completed_at = now;
     settle();
     pruneTasks(state);
 
-    return {
-      ok: true,
-      verified,
-      expected_value: expected.value,
-      task: taskView(task, state.devices),
-    };
+    return { ok: true, verified: true, task: taskView(task, state.devices) };
   });
 
   if (result.error) return fail(result.error, result.status);

@@ -1,9 +1,8 @@
 'use server';
 
-import crypto from 'node:crypto';
 import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
-import { issueTask, cancelTask, issueJob, cancelJob } from '../lib/actions.js';
+import { issueTask, cancelTask, issueJob, cancelJob, sendOperatorMessage } from '../lib/actions.js';
 import { ADMIN_COOKIE, adminKey, safeEqual } from '../lib/admin.js';
 
 export async function adminLoginAction(key) {
@@ -29,16 +28,12 @@ export async function adminLogoutAction() {
   return { ok: true };
 }
 
-export async function enqueueBenchmarkAction({ deviceId = null, iterations = 200000, chunks = 8 }) {
+export async function enqueueTaskAction({ workload = 'python', params = {}, deviceId = null }) {
   try {
     const task = await issueTask({
       deviceId: deviceId || null,
-      workload: 'hash_sum_v1',
-      params: {
-        seed: crypto.randomBytes(8).toString('hex'),
-        iterations: Number(iterations),
-        chunks: Number(chunks),
-      },
+      workload,
+      params,
       limits: { max_cpu_pct: 20, max_memory_mb: 128, deadline_seconds: 120 },
       createdBy: 'dashboard',
     });
@@ -46,39 +41,20 @@ export async function enqueueBenchmarkAction({ deviceId = null, iterations = 200
     return {
       ok: true,
       taskId: task.id,
-      message: `Benchmark ${task.id.slice(0, 8)} queued for ${task.device_name || 'device'}.`,
+      message: `${workload} task ${task.id.slice(0, 8)} queued for ${task.device_name || 'any eligible device'}.`,
     };
   } catch (error) {
     return { ok: false, error: error.message || 'Could not queue task.' };
   }
 }
 
-export async function enqueuePythonAction({ deviceId = null, code = '', args = null, maxSeconds = 10 }) {
-  try {
-    const task = await issueTask({
-      deviceId: deviceId || null,
-      workload: 'python_func',
-      params: { code, args },
-      limits: { max_cpu_pct: 20, max_memory_mb: 128, deadline_seconds: 60, max_seconds: Number(maxSeconds) },
-      createdBy: 'dashboard',
-    });
-    revalidatePath('/');
-    return {
-      ok: true,
-      taskId: task.id,
-      message: `Python task ${task.id.slice(0, 8)} queued for ${task.device_name || 'device'}.`,
-    };
-  } catch (error) {
-    return { ok: false, error: error.message || 'Could not queue Python task.' };
-  }
-}
-
-export async function enqueueJobAction({ workload = 'hash_sum_v1', params = {}, shards = 12 }) {
+export async function enqueueJobAction({ workload = 'python', params = {}, shards = 4, reduce = 'concat' }) {
   try {
     const job = await issueJob({
       workload,
       params,
       shards: Number(shards),
+      reduce,
       limits: { max_cpu_pct: 20, max_memory_mb: 128, deadline_seconds: 300 },
       createdBy: 'dashboard',
     });
@@ -86,7 +62,7 @@ export async function enqueueJobAction({ workload = 'hash_sum_v1', params = {}, 
     return {
       ok: true,
       jobId: job.id,
-      message: `Job ${job.id.slice(0, 8)} split into ${job.shard_count} shards.`,
+      message: `Job ${job.id.slice(0, 8)} split into ${job.shard_count} shards (${job.reduce}).`,
     };
   } catch (error) {
     return { ok: false, error: error.message || 'Could not create job.' };
@@ -110,5 +86,15 @@ export async function cancelTaskAction({ taskId }) {
     return { ok: true, message: `Cancel requested for ${task.id.slice(0, 8)}.` };
   } catch (error) {
     return { ok: false, error: error.message || 'Could not cancel task.' };
+  }
+}
+
+export async function sendMessageAction({ to = null, body = '', topic = 'chat' }) {
+  try {
+    const message = await sendOperatorMessage({ to: to || null, body, topic });
+    revalidatePath('/');
+    return { ok: true, message: `Message sent to ${message.to ? 'device' : 'all devices'}.` };
+  } catch (error) {
+    return { ok: false, error: error.message || 'Could not send message.' };
   }
 }

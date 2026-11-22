@@ -1,5 +1,6 @@
 import { readState } from '../../../../lib/store.js';
-import { taskView, WORKLOADS } from '../../../../lib/tasks.js';
+import { taskView } from '../../../../lib/tasks.js';
+import { isWorkload } from '../../../../lib/workloads.js';
 import { issueTask } from '../../../../lib/actions.js';
 import { sweepStore } from '../../../../lib/scheduler.js';
 import { adminGateResponse, isAdminRequest } from '../../../../lib/admin.js';
@@ -26,12 +27,16 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  if (!isAdminRequest(request)) {
+    const gate = adminGateResponse();
+    return fail(gate.error, gate.status);
+  }
   const body = await readJson(request);
   if (!body) return fail('invalid_json', 400);
 
   const deviceId = body.device_id ? cleanString(body.device_id, 64) : null;
-  const workload = cleanString(body.workload, 32) || 'hash_sum_v1';
-  if (!WORKLOADS.includes(workload)) return fail('unsupported_workload', 400);
+  const workload = cleanString(body.workload, 32) || 'python';
+  if (!isWorkload(workload)) return fail('unsupported_workload', 400);
 
   try {
     const task = await issueTask({
@@ -39,7 +44,7 @@ export async function POST(request) {
       workload,
       params: body.params,
       limits: body.resource_limits,
-      createdBy: 'public_api',
+      createdBy: 'operator_api',
     });
     return json({ task }, 201);
   } catch (error) {
