@@ -7,6 +7,7 @@ import {
   enqueueJobAction,
   cancelJobAction,
   sendMessageAction,
+  setLendingAction,
 } from './actions.js';
 
 const STATUS_LABELS = {
@@ -304,6 +305,62 @@ function JobCard({ job, pending, onCancel }) {
   );
 }
 
+function LendingPanel({ devices, pending, onToggle }) {
+  if (!devices.length) return <p className="muted empty">No devices to lend from yet.</p>;
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Device</th>
+            <th>Active compute</th>
+            <th>CPU offered</th>
+            <th>Per hour</th>
+            <th>Units/hour</th>
+            <th>Units banked</th>
+            <th>Units earned</th>
+            <th>Used this hour</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {devices.map((device) => {
+            const lending = device.lending || {};
+            const credits = device.credits || {};
+            return (
+              <tr key={device.id}>
+                <td>{device.name}</td>
+                <td>
+                  <span className={`pill status-${lending.enabled ? 'connected' : 'offline'}`}>
+                    <span className="dot" />
+                    {lending.enabled ? 'Lending' : 'Idle'}
+                  </span>
+                </td>
+                <td>{lending.cpu_pct ?? 20}%</td>
+                <td>{lending.minutes_per_hour ?? 30} min</td>
+                <td>{lending.units_per_hour ?? 1}</td>
+                <td className="mono">{credits.units ?? 0}</td>
+                <td className="mono">{credits.total_units ?? 0}</td>
+                <td className="mono">{(credits.minutes_used ?? 0).toFixed(1)} min</td>
+                <td>
+                  <button
+                    type="button"
+                    className="ghost small"
+                    disabled={pending}
+                    onClick={() => onToggle(device.id, !lending.enabled)}
+                  >
+                    {lending.enabled ? 'Stop lending' : 'Start lending'}
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function MessageFeed({ messages, devices }) {
   if (!messages.length) return <p className="muted empty">No messages yet. Say hello to a device.</p>;
   const name = (id) => {
@@ -429,6 +486,14 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
     });
   }
 
+  function toggleLending(deviceId, enabled) {
+    startTransition(async () => {
+      const result = await setLendingAction({ deviceId, enabled });
+      setNotice(result.ok ? result.message : result.error);
+      if (result.ok) refresh();
+    });
+  }
+
   function sendMessage() {
     if (!composeBody.trim()) {
       setNotice('Message body is empty.');
@@ -503,6 +568,7 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
         <StatCard label="Active workers" value={summary?.active_workers ?? 0} detail="compute opted in" />
         <StatCard label="Available RAM" value={formatMb(summary?.total_available_ram_mb)} detail="connected workers" />
         <StatCard label="Active tasks" value={summary?.active_tasks ?? 0} detail={`${summary?.executing ?? 0} executing`} />
+        <StatCard label="Compute units" value={summary?.total_compute_units ?? 0} detail={`${summary?.lending_devices ?? 0} devices lending`} />
       </section>
 
       <section className="section">
@@ -666,6 +732,14 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
             </p>
           </div>
         )}
+      </section>
+
+      <section className="section">
+        <div className="section-head">
+          <h2>Compute lending</h2>
+          <span className="muted small">active compute · one unit per hour of compute lent</span>
+        </div>
+        <LendingPanel devices={devices} pending={pending} onToggle={toggleLending} />
       </section>
 
       <section className="section">

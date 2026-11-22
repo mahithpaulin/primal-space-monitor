@@ -1,6 +1,6 @@
 import { withState } from '../../../../lib/store.js';
 import { authenticateDevice } from '../../../../lib/auth.js';
-import { sanitizeMetrics, sanitizeWorker } from '../../../../lib/device.js';
+import { sanitizeCredits, sanitizeLending, sanitizeMetrics, sanitizeWorker } from '../../../../lib/device.js';
 import { cleanString, json, fail, readJson } from '../../../../lib/http.js';
 import { deviceStatus, offlineSeconds } from '../../../../lib/status.js';
 import { normalizeWorkloads } from '../../../../lib/workloads.js';
@@ -23,6 +23,8 @@ export async function POST(request) {
     const worker = sanitizeWorker(body.worker || {});
     const cliVersion = cleanString(body.cli_version, 32);
     const workloads = normalizeWorkloads(body.workloads);
+    const lending = sanitizeLending(body.lending);
+    const credits = sanitizeCredits(body.credits);
 
     device.metrics = metrics;
     device.worker = worker;
@@ -30,6 +32,8 @@ export async function POST(request) {
     device.disconnected_at = null;
     if (cliVersion) device.cli_version = cliVersion;
     if (workloads.length) device.workloads = workloads;
+    device.lending = { ...lending, updated_at: now };
+    device.credits = credits;
 
     return {
       ok: true,
@@ -37,6 +41,7 @@ export async function POST(request) {
       server_time: now,
       offline_after_seconds: offlineSeconds(),
       status: deviceStatus(device),
+      lending_request: device.lending_request ?? null,
     };
   });
 

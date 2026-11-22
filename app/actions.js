@@ -2,7 +2,7 @@
 
 import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
-import { issueTask, cancelTask, issueJob, cancelJob, sendOperatorMessage } from '../lib/actions.js';
+import { issueTask, cancelTask, issueJob, cancelJob, sendOperatorMessage, requestLending } from '../lib/actions.js';
 import { ADMIN_COOKIE, adminKey, safeEqual } from '../lib/admin.js';
 
 export async function adminLoginAction(key) {
@@ -96,5 +96,20 @@ export async function sendMessageAction({ to = null, body = '', topic = 'chat' }
     return { ok: true, message: `Message sent to ${message.to ? 'device' : 'all devices'}.` };
   } catch (error) {
     return { ok: false, error: error.message || 'Could not send message.' };
+  }
+}
+
+export async function setLendingAction({ deviceId, enabled, cpuPct = null, minutesPerHour = null, unitsPerHour = null }) {
+  try {
+    const request = await requestLending({ deviceId, enabled, cpuPct, minutesPerHour, unitsPerHour });
+    revalidatePath('/');
+    return {
+      ok: true,
+      message: enabled
+        ? `Active compute requested (${request.cpu_pct}% CPU, ${request.minutes_per_hour} min/hour).`
+        : 'Active compute disabled on next heartbeat.',
+    };
+  } catch (error) {
+    return { ok: false, error: error.message || 'Could not update lending.' };
   }
 }
