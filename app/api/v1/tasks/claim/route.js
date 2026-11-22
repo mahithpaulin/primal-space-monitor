@@ -3,6 +3,7 @@ import { authenticateDevice } from '../../../../../lib/auth.js';
 import { taskView } from '../../../../../lib/tasks.js';
 import { cleanString, json, fail, readJson } from '../../../../../lib/http.js';
 import { normalizeWorkloads } from '../../../../../lib/workloads.js';
+import { sweepStore } from '../../../../../lib/scheduler.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +13,7 @@ export async function POST(request) {
   const deviceId = cleanString(body.device_id, 64);
   if (!deviceId) return fail('device_id_required', 400);
 
+  await sweepStore();
   const state = await withStateRead((current) => current);
   const auth = authenticateDevice(state, request, deviceId);
   if (auth.error) return fail(auth.error, auth.status);

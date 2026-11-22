@@ -1,7 +1,7 @@
 import { readState } from '../../../../lib/store.js';
 import { taskView, WORKLOADS } from '../../../../lib/tasks.js';
-import { createTask } from '../../../../lib/tasks.js';
-import { withState, pruneTasks } from '../../../../lib/store.js';
+import { issueTask } from '../../../../lib/actions.js';
+import { sweepStore } from '../../../../lib/scheduler.js';
 import { adminGateResponse, isAdminRequest } from '../../../../lib/admin.js';
 import { cleanString, json, fail, readJson } from '../../../../lib/http.js';
 
@@ -12,6 +12,7 @@ export async function GET(request) {
     const gate = adminGateResponse();
     return fail(gate.error, gate.status);
   }
+  await sweepStore();
   const state = await readState();
   const url = new URL(request.url);
   const deviceId = url.searchParams.get('device_id');
@@ -32,20 +33,18 @@ export async function POST(request) {
   const workload = cleanString(body.workload, 32) || 'hash_sum_v1';
   if (!WORKLOADS.includes(workload)) return fail('unsupported_workload', 400);
 
-  const result = await withState((state) => {
-    if (deviceId && !state.devices[deviceId]) return { error: 'device_not_found', status: 404 };
-    const task = createTask({
+  try {
+    const task = await issueTask({
       deviceId,
       workload,
       params: body.params,
-      resourceLimits: body.resource_limits,
+      limits: body.resource_limits,
       createdBy: 'public_api',
     });
-    state.tasks[task.id] = task;
-    pruneTasks(state);
-    return { task: taskView(task, state.devices) };
-  });
-
-  if (result.error) return fail(result.error, result.status);
-  return json(result, 201);
+    return json({ task }, 201);
+  } catch (error) {
+    const message = error.message || 'task_create_failed';
+    const status = message.startsWith('unsupported_workload') ? 409 : message === 'device_not_found' ? 404 : 400;
+    return fail(message, status);
+  }
 }

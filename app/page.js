@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { readState } from '../lib/store.js';
 import { deviceView, summarize } from '../lib/status.js';
 import { taskView } from '../lib/tasks.js';
+import { jobView } from '../lib/jobs.js';
 import { ADMIN_COOKIE, adminKey, safeEqual } from '../lib/admin.js';
 import AdminGate from './admin-gate.js';
 import Dashboard from './dashboard.js';
@@ -28,10 +29,16 @@ export default async function Page() {
     .slice(0, 50)
     .map((task) => taskView(task, state.devices));
 
+  const jobs = Object.values(state.jobs || {})
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+    .slice(0, 12)
+    .map((job) => jobView(job, state.tasks, state.devices));
+
   return (
     <Dashboard
       initialDevices={devices}
       initialTasks={tasks}
+      initialJobs={jobs}
       initialSummary={summarize(state.devices, state.tasks, now)}
     />
   );

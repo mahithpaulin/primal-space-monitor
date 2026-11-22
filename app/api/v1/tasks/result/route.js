@@ -1,6 +1,7 @@
 import { withState, pruneTasks } from '../../../../../lib/store.js';
 import { authenticateDevice } from '../../../../../lib/auth.js';
 import { hashSum, MAX_STDOUT, taskView } from '../../../../../lib/tasks.js';
+import { finalizeJob } from '../../../../../lib/jobs.js';
 import { cleanString, finiteNumber, json, fail, readJson } from '../../../../../lib/http.js';
 
 export const dynamic = 'force-dynamic';
@@ -29,6 +30,9 @@ export async function POST(request) {
       return { error: 'task_not_claimed', status: 409 };
     }
 
+    const settle = () => {
+      if (task.job_id && state.jobs?.[task.job_id]) finalizeJob(state.jobs[task.job_id], state.tasks);
+    };
     const reportedStatus = cleanString(body.status, 16) || 'completed';
     const now = new Date().toISOString();
     const duration = finiteNumber(body.duration_ms, 0, 86400000);
@@ -46,6 +50,7 @@ export async function POST(request) {
       task.error = cleanString(body.error, 200) || 'cancelled_by_worker';
       task.cancel_requested = false;
       task.completed_at = now;
+      settle();
       pruneTasks(state);
       return { ok: true, task: taskView(task, state.devices) };
     }
@@ -55,6 +60,7 @@ export async function POST(request) {
       task.error = cleanString(body.error, 200) || 'worker_reported_failure';
       task.verified = false;
       task.completed_at = now;
+      settle();
       pruneTasks(state);
       return { ok: true, task: taskView(task, state.devices) };
     }
@@ -68,6 +74,7 @@ export async function POST(request) {
       task.error = 'cancelled_before_result_accepted';
       task.cancel_requested = false;
       task.completed_at = now;
+      settle();
       pruneTasks(state);
       return { ok: true, task: taskView(task, state.devices), cancelled: true };
     }
@@ -88,6 +95,7 @@ export async function POST(request) {
       task.status = 'completed';
       task.error = null;
       task.completed_at = now;
+      settle();
       pruneTasks(state);
       return { ok: true, verified: null, task: taskView(task, state.devices) };
     }
@@ -101,6 +109,7 @@ export async function POST(request) {
     task.status = verified ? 'completed' : 'failed';
     task.error = verified ? null : 'verification_failed';
     task.completed_at = now;
+    settle();
     pruneTasks(state);
 
     return {

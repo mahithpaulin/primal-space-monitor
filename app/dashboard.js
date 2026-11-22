@@ -1,7 +1,13 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
-import { enqueueBenchmarkAction, enqueuePythonAction, cancelTaskAction } from './actions.js';
+import {
+  enqueueBenchmarkAction,
+  enqueuePythonAction,
+  cancelTaskAction,
+  enqueueJobAction,
+  cancelJobAction,
+} from './actions.js';
 
 const STATUS_LABELS = {
   registered: 'Registered',
@@ -237,9 +243,90 @@ function TaskTable({ tasks, pending, onCancel }) {
   );
 }
 
-export default function Dashboard({ initialDevices, initialTasks, initialSummary }) {
+
+const JOB_STATUS = {
+  pending: 'Queued',
+  running: 'Running',
+  completed: 'Completed',
+  failed: 'Failed',
+  cancelling: 'Cancelling',
+  cancelled: 'Cancelled',
+};
+
+const SHARD_COLORS = {
+  pending: 'var(--muted)',
+  claimed: 'var(--warn)',
+  executing: 'var(--exec)',
+  completed: 'var(--good)',
+  failed: 'var(--bad)',
+  cancelled: 'var(--muted)',
+};
+
+function JobCard({ job, pending, onCancel }) {
+  const progress = job.progress || { total: 0, completed: 0, failed: 0 };
+  const total = Math.max(1, progress.total);
+  const done = progress.completed + progress.failed + progress.cancelled;
+  const pct = Math.round((done / total) * 100);
+  const active = ['pending', 'running', 'cancelling'].includes(job.status);
+  return (
+    <article className="job-card">
+      <div className="job-head">
+        <div>
+          <h3>{job.workload === 'python_func' ? 'Python job' : 'Distributed hash job'}</h3>
+          <p className="muted small">
+            {shortId(job.id)} · {job.shard_count} shard{job.shard_count === 1 ? '' : 's'}
+            {job.total_iterations ? ` · ${job.total_iterations.toLocaleString()} iterations` : ''} ·{' '}
+            {formatAge(job.created_at)}
+          </p>
+        </div>
+        <div className="job-actions">
+          <span className={`pill status-${job.status === 'completed' ? 'connected' : job.status === 'failed' ? 'offline' : 'executing'}`}>
+            <span className="dot" />
+            {JOB_STATUS[job.status] || job.status}
+          </span>
+          {active ? (
+            <button type="button" className="ghost small" disabled={pending} onClick={() => onCancel(job.id)}>
+              Cancel
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <div className="progress" aria-label={`${pct}% complete`}>
+        <div className="progress-bar" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="job-meta">
+        <span className="muted small">
+          {progress.completed}/{progress.total} shards done
+          {progress.executing || progress.claimed ? ` · ${progress.executing + progress.claimed} running` : ''}
+          {progress.failed ? ` · ${progress.failed} failed` : ''}
+        </span>
+        <span className="muted small">
+          {job.aggregate && job.aggregate.value !== null ? `result ${job.aggregate.value}` : 'aggregating…'}
+          {job.aggregate && job.aggregate.verified === true ? ' · verified' : ''}
+        </span>
+      </div>
+      <div className="shard-grid">
+        {job.shards.map((shard) => (
+          <span
+            key={shard.id}
+            className="shard-chip"
+            style={{ borderColor: SHARD_COLORS[shard.status] || 'var(--border)', color: SHARD_COLORS[shard.status] || 'var(--muted)' }}
+            title={`shard ${shard.index} · ${shard.status}${shard.device_name ? ` · ${shard.device_name}` : ''}${shard.attempts ? ` · attempts ${shard.attempts}` : ''}`}
+          >
+            {shard.index + 1}
+          </span>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+export default function Dashboard({ initialDevices, initialTasks, initialJobs = [], initialSummary }) {
   const [devices, setDevices] = useState(initialDevices);
   const [tasks, setTasks] = useState(initialTasks);
+  const [jobs, setJobs] = useState(initialJobs);
+  const [jobIterations, setJobIterations] = useState(600000);
+  const [jobShards, setJobShards] = useState(12);
   const [summary, setSummary] = useState(initialSummary);
   const [notice, setNotice] = useState(null);
   const [error, setError] = useState(null);
@@ -253,16 +340,19 @@ export default function Dashboard({ initialDevices, initialTasks, initialSummary
 
   async function refresh() {
     try {
-      const [devicesResponse, tasksResponse] = await Promise.all([
+      const [devicesResponse, tasksResponse, jobsResponse] = await Promise.all([
         fetch('/api/v1/devices', { cache: 'no-store' }),
         fetch('/api/v1/tasks?limit=20', { cache: 'no-store' }),
+        fetch('/api/v1/jobs?limit=12', { cache: 'no-store' }),
       ]);
       if (!devicesResponse.ok || !tasksResponse.ok) throw new Error('Monitor API unavailable');
       const devicesPayload = await devicesResponse.json();
       const tasksPayload = await tasksResponse.json();
+      const jobsPayload = jobsResponse.ok ? await jobsResponse.json() : { jobs: [] };
       setDevices(devicesPayload.devices || []);
       setSummary(devicesPayload.summary || {});
       setTasks(tasksPayload.tasks || []);
+      setJobs(jobsPayload.jobs || []);
       setLastUpdated(Date.now());
       setError(null);
     } catch (fetchError) {
@@ -307,6 +397,26 @@ export default function Dashboard({ initialDevices, initialTasks, initialSummary
         args,
         maxSeconds: pythonSeconds,
       });
+      setNotice(result.ok ? result.message : result.error);
+      if (result.ok) refresh();
+    });
+  }
+
+  function runJob() {
+    startTransition(async () => {
+      const result = await enqueueJobAction({
+        workload: 'hash_sum_v1',
+        params: { iterations: Number(jobIterations) || 600000, chunks: 8 },
+        shards: Number(jobShards) || 12,
+      });
+      setNotice(result.ok ? result.message : result.error);
+      if (result.ok) refresh();
+    });
+  }
+
+  function cancelJob(jobId) {
+    startTransition(async () => {
+      const result = await cancelJobAction({ jobId });
       setNotice(result.ok ? result.message : result.error);
       if (result.ok) refresh();
     });
@@ -418,6 +528,48 @@ export default function Dashboard({ initialDevices, initialTasks, initialSummary
 
       <section className="section">
         <div className="section-head">
+          <h2>Distributed jobs</h2>
+          <span className="muted small">one job → many parallel shards, auto-scheduled to every capable worker</span>
+        </div>
+        <div className="job-form">
+          <label className="muted small" htmlFor="job-iterations">Total iterations</label>
+          <input
+            id="job-iterations"
+            className="task-input"
+            type="number"
+            min="1000"
+            max="2000000"
+            step="1000"
+            value={jobIterations}
+            onChange={(event) => setJobIterations(event.target.value)}
+          />
+          <label className="muted small" htmlFor="job-shards">Shards</label>
+          <input
+            id="job-shards"
+            className="task-input task-input-small"
+            type="number"
+            min="1"
+            max="64"
+            value={jobShards}
+            onChange={(event) => setJobShards(event.target.value)}
+          />
+          <button type="button" className="primary" disabled={pending} onClick={runJob}>
+            Run distributed job
+          </button>
+        </div>
+        {jobs.length ? (
+          <div className="job-list">
+            {jobs.map((job) => (
+              <JobCard key={job.id} job={job} pending={pending} onCancel={cancelJob} />
+            ))}
+          </div>
+        ) : (
+          <p className="muted empty">No jobs yet. One job splits into shards that any eligible device can claim in parallel.</p>
+        )}
+      </section>
+
+      <section className="section">
+        <div className="section-head">
           <h2>Python console</h2>
           <span className="muted small">restricted python_func workload</span>
         </div>
@@ -442,7 +594,7 @@ export default function Dashboard({ initialDevices, initialTasks, initialSummary
           <h2>Tasks</h2>
           <span className="muted small">hash_sum_v1 and restricted python_func workloads</span>
         </div>
-        <TaskTable tasks={tasks} pending={pending} onCancel={cancelTask} />
+        <TaskTable tasks={tasks.filter((task) => !task.job_id)} pending={pending} onCancel={cancelTask} />
       </section>
 
       <footer className="footer">
