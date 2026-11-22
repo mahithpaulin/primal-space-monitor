@@ -1,6 +1,6 @@
-import { requestLending } from '../../../../lib/actions.js';
-import { adminGateResponse, isAdminRequest } from '../../../../lib/admin.js';
-import { cleanString, json, fail, readJson } from '../../../../lib/http.js';
+import { requestLending } from '../../../../../lib/actions.js';
+import { adminGateResponse, isAdminRequest } from '../../../../../lib/admin.js';
+import { cleanString, json, fail, readJson } from '../../../../../lib/http.js';
 
 export const dynamic = 'force-dynamic';
 
