@@ -728,3 +728,43 @@ tr:last-child td {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.currency-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.1fr) minmax(320px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 980px) {
+  .currency-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.currency-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.wallet-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.avatar {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.block {
+  display: block;
+}

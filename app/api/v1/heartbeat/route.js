@@ -1,6 +1,6 @@
 import { withState } from '../../../../lib/store.js';
 import { authenticateDevice } from '../../../../lib/auth.js';
-import { sanitizeCredits, sanitizeLending, sanitizeMetrics, sanitizeWorker } from '../../../../lib/device.js';
+import { sanitizeCaps, sanitizeCredits, sanitizeLending, sanitizeMetrics, sanitizeProfile, sanitizeWallet, sanitizeWorker } from '../../../../lib/device.js';
 import { cleanString, json, fail, readJson } from '../../../../lib/http.js';
 import { deviceStatus, offlineSeconds } from '../../../../lib/status.js';
 import { normalizeWorkloads } from '../../../../lib/workloads.js';
@@ -25,6 +25,9 @@ export async function POST(request) {
     const workloads = normalizeWorkloads(body.workloads);
     const lending = sanitizeLending(body.lending);
     const credits = sanitizeCredits(body.credits);
+    const profile = sanitizeProfile(body.profile);
+    const wallet = sanitizeWallet(body.wallet);
+    const caps = sanitizeCaps(body.caps);
 
     device.metrics = metrics;
     device.worker = worker;
@@ -34,6 +37,15 @@ export async function POST(request) {
     if (workloads.length) device.workloads = workloads;
     device.lending = { ...lending, updated_at: now };
     device.credits = credits;
+    device.profile = { ...profile, updated_at: now };
+    device.wallet = { ...wallet, updated_at: now };
+    device.caps = caps;
+    device.wallet_history = Array.isArray(device.wallet_history) ? device.wallet_history.slice(-240) : [];
+    device.wallet_history.push({
+      at: now,
+      balance: credits.units,
+      earned: credits.total_units,
+    });
 
     return {
       ok: true,

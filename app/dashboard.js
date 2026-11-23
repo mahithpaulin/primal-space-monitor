@@ -8,6 +8,7 @@ import {
   cancelJobAction,
   sendMessageAction,
   setLendingAction,
+  transferCreditsAction,
 } from './actions.js';
 
 const STATUS_LABELS = {
@@ -98,7 +99,10 @@ function DeviceCard({ device, pending, onCancel, onTarget }) {
     <article className="device-card">
       <div className="device-head">
         <div>
-          <h3>{device.name}</h3>
+          <h3>
+            {device.profile?.avatar ? <span className="avatar">{device.profile.avatar}</span> : null}
+            {device.name}
+          </h3>
           <p className="muted">
             {[device.manufacturer, device.model].filter(Boolean).join(' ') || 'Unknown device'}
           </p>
@@ -109,7 +113,12 @@ function DeviceCard({ device, pending, onCancel, onTarget }) {
       <dl className="device-grid">
         <div>
           <dt>Platform</dt>
-          <dd>{device.cli_version || device.android_version ? device.cli_version || `Android ${device.android_version}` : '—'}</dd>
+          <dd>
+            {device.cli_version || device.android_version
+              ? device.cli_version || `Android ${device.android_version}`
+              : '—'}
+            {device.profile?.status ? <span className="muted"> · {device.profile.status}</span> : null}
+          </dd>
         </div>
         <div>
           <dt>CPU</dt>
@@ -361,6 +370,127 @@ function LendingPanel({ devices, pending, onToggle }) {
   );
 }
 
+function CurrencyPanel({ devices, summary, transfers, pending, onTransfer }) {
+  const wallets = devices.map((device) => ({
+    id: device.id,
+    name: device.name,
+    avatar: device.profile?.avatar || '',
+    status: device.profile?.status || '',
+    balance: device.wallet?.balance ?? 0,
+    earned: device.wallet?.earned_total ?? 0,
+    spent: device.wallet?.spent_total ?? 0,
+    caps: device.caps || {},
+  }));
+  const [from, setFrom] = useState(wallets[0]?.id || '');
+  const [to, setTo] = useState(wallets[1]?.id || '');
+  const [amount, setAmount] = useState('1');
+  const [note, setNote] = useState('');
+
+  const capText = (caps) => {
+    const parts = [];
+    if (caps.day_minutes) parts.push(`${caps.day_used}/${caps.day_minutes}m day`);
+    if (caps.week_minutes) parts.push(`${caps.week_used}/${caps.week_minutes}m week`);
+    if (caps.month_minutes) parts.push(`${caps.month_used}/${caps.month_minutes}m month`);
+    return parts.join(' · ') || 'no caps';
+  };
+
+  return (
+    <div className="currency-grid">
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Wallet</th>
+              <th>Balance</th>
+              <th>Earned</th>
+              <th>Sent</th>
+              <th>Compute caps</th>
+            </tr>
+          </thead>
+          <tbody>
+            {wallets.map((wallet) => (
+              <tr key={wallet.id}>
+                <td>
+                  <span className="wallet-name">
+                    {wallet.avatar ? <span className="avatar">{wallet.avatar}</span> : null}
+                    {wallet.name}
+                  </span>
+                  {wallet.status ? <span className="muted small block">{wallet.status}</span> : null}
+                </td>
+                <td className="mono">{wallet.balance.toFixed(3)} CU</td>
+                <td className="mono">{wallet.earned.toFixed(3)}</td>
+                <td className="mono">{wallet.spent.toFixed(3)}</td>
+                <td className="muted small">{capText(wallet.caps)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="currency-side">
+        <div className="stat-row">
+          <StatCard label="Total balance" value={`${(summary?.total_balance ?? 0).toFixed(3)} CU`} detail="spendable across devices" />
+          <StatCard label="Minted" value={`${(summary?.total_earned ?? 0).toFixed(3)} CU`} detail="earned by lending" />
+          <StatCard label="Transferred" value={`${(summary?.total_transferred ?? 0).toFixed(3)} CU`} detail={`${summary?.transfer_count ?? 0} transfers`} />
+        </div>
+
+        <div className="compose">
+          <select className="task-input" value={from} onChange={(event) => setFrom(event.target.value)} aria-label="From wallet">
+            {wallets.map((wallet) => (
+              <option key={wallet.id} value={wallet.id}>{wallet.name}</option>
+            ))}
+          </select>
+          <select className="task-input" value={to} onChange={(event) => setTo(event.target.value)} aria-label="To wallet">
+            {wallets.map((wallet) => (
+              <option key={wallet.id} value={wallet.id}>{wallet.name}</option>
+            ))}
+          </select>
+          <input
+            className="task-input task-input-small"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            aria-label="Amount"
+            inputMode="decimal"
+          />
+          <input
+            className="task-input"
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="note"
+            aria-label="Transfer note"
+          />
+          <button
+            type="button"
+            className="primary"
+            disabled={pending || !from || !to || from === to}
+            onClick={() => onTransfer({ from, to, amount: Number(amount), note })}
+          >
+            Send CU
+          </button>
+        </div>
+
+        {transfers.length ? (
+          <ul className="message-list">
+            {transfers.slice(0, 8).map((transfer) => (
+              <li key={transfer.id} className="message">
+                <div className="message-head">
+                  <span className="mono small">
+                    {transfer.from_name || transfer.from} → {transfer.to_name || transfer.to}: {transfer.amount} CU
+                  </span>
+                  <span className="muted small">{formatAge(transfer.created_at)}</span>
+                </div>
+                {transfer.note ? <p className="message-body">{transfer.note}</p> : null}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted empty">No transfers yet. Compute units are currency — move them between devices.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function MessageFeed({ messages, devices }) {
   if (!messages.length) return <p className="muted empty">No messages yet. Say hello to a device.</p>;
   const name = (id) => {
@@ -383,11 +513,12 @@ function MessageFeed({ messages, devices }) {
   );
 }
 
-export default function Dashboard({ initialDevices, initialTasks, initialJobs = [], initialMessages = [], initialSummary }) {
+export default function Dashboard({ initialDevices, initialTasks, initialJobs = [], initialMessages = [], initialSummary, initialCurrency }) {
   const [devices, setDevices] = useState(initialDevices);
   const [tasks, setTasks] = useState(initialTasks);
   const [jobs, setJobs] = useState(initialJobs);
   const [messages, setMessages] = useState(initialMessages);
+  const [currency, setCurrency] = useState(initialCurrency || { summary: {}, transfers: [] });
   const [summary, setSummary] = useState(initialSummary);
   const [notice, setNotice] = useState(null);
   const [error, setError] = useState(null);
@@ -410,22 +541,25 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
 
   async function refresh() {
     try {
-      const [devicesResponse, tasksResponse, jobsResponse, messagesResponse] = await Promise.all([
+      const [devicesResponse, tasksResponse, jobsResponse, messagesResponse, creditsResponse] = await Promise.all([
         fetch('/api/v1/devices', { cache: 'no-store' }),
         fetch('/api/v1/tasks?limit=20', { cache: 'no-store' }),
         fetch('/api/v1/jobs?limit=12', { cache: 'no-store' }),
         fetch('/api/v1/messages?limit=30', { cache: 'no-store' }),
+        fetch('/api/v1/credits?limit=30', { cache: 'no-store' }),
       ]);
       if (!devicesResponse.ok || !tasksResponse.ok) throw new Error('Monitor API unavailable');
       const devicesPayload = await devicesResponse.json();
       const tasksPayload = await tasksResponse.json();
       const jobsPayload = jobsResponse.ok ? await jobsResponse.json() : { jobs: [] };
       const messagesPayload = messagesResponse.ok ? await messagesResponse.json() : { messages: [] };
+      const currencyPayload = creditsResponse.ok ? await creditsResponse.json() : { summary: {}, transfers: [] };
       setDevices(devicesPayload.devices || []);
       setSummary(devicesPayload.summary || {});
       setTasks(tasksPayload.tasks || []);
       setJobs(jobsPayload.jobs || []);
       setMessages(messagesPayload.messages || []);
+      setCurrency(currencyPayload);
       setLastUpdated(Date.now());
       setError(null);
     } catch (fetchError) {
@@ -446,6 +580,16 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
       clearInterval(interval);
     };
   }, []);
+
+  function friendlyError(error) {
+    const text = error || 'Request failed.';
+    if (text.includes('items_required_for_sharding')) {
+      return 'Add a JSON items array to split this job across shards.';
+    }
+    if (text.includes('insufficient_balance')) return 'That wallet does not have enough CU.';
+    if (text.includes('unsupported_workload')) return 'No eligible device supports that workload.';
+    return text;
+  }
 
   function buildParams() {
     let parsedItems;
@@ -489,6 +633,18 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
   function toggleLending(deviceId, enabled) {
     startTransition(async () => {
       const result = await setLendingAction({ deviceId, enabled });
+      setNotice(result.ok ? result.message : friendlyError(result.error));
+      if (result.ok) refresh();
+    });
+  }
+
+  function sendTransfer({ from, to, amount, note }) {
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setNotice('Enter a transfer amount greater than zero.');
+      return;
+    }
+    startTransition(async () => {
+      const result = await transferCreditsAction({ from, to, amount, note });
       setNotice(result.ok ? result.message : result.error);
       if (result.ok) refresh();
     });
@@ -569,6 +725,7 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
         <StatCard label="Available RAM" value={formatMb(summary?.total_available_ram_mb)} detail="connected workers" />
         <StatCard label="Active tasks" value={summary?.active_tasks ?? 0} detail={`${summary?.executing ?? 0} executing`} />
         <StatCard label="Compute units" value={summary?.total_compute_units ?? 0} detail={`${summary?.lending_devices ?? 0} devices lending`} />
+        <StatCard label="CU balance" value={`${(currency.summary?.total_balance ?? 0).toFixed(2)}`} detail="spendable currency" />
       </section>
 
       <section className="section">
@@ -732,6 +889,20 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
             </p>
           </div>
         )}
+      </section>
+
+      <section className="section">
+        <div className="section-head">
+          <h2>Currency</h2>
+          <span className="muted small">compute units are spendable credits · move them peer to peer</span>
+        </div>
+        <CurrencyPanel
+          devices={devices}
+          summary={currency.summary}
+          transfers={currency.transfers || []}
+          pending={pending}
+          onTransfer={sendTransfer}
+        />
       </section>
 
       <section className="section">

@@ -19,6 +19,13 @@ export async function GET(request) {
         name: device.name,
         status: device.status,
         workloads: normalizeWorkloads(device.workloads),
+        profile: {
+          name: device.profile?.name ?? '',
+          status: device.profile?.status ?? '',
+          avatar: device.profile?.avatar ?? '',
+        },
+        balance: device.credits?.balance ?? device.wallet?.balance ?? 0,
+        lending: device.lending?.enabled === true,
         last_heartbeat_at: device.last_heartbeat_at ?? null,
       }))
       .sort((a, b) => String(a.name).localeCompare(String(b.name)));

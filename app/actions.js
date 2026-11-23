@@ -2,7 +2,7 @@
 
 import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
-import { issueTask, cancelTask, issueJob, cancelJob, sendOperatorMessage, requestLending } from '../lib/actions.js';
+import { issueTask, cancelTask, issueJob, cancelJob, sendOperatorMessage, requestLending, transferCredits } from '../lib/actions.js';
 import { ADMIN_COOKIE, adminKey, safeEqual } from '../lib/admin.js';
 
 export async function adminLoginAction(key) {
@@ -111,5 +111,15 @@ export async function setLendingAction({ deviceId, enabled, cpuPct = null, minut
     };
   } catch (error) {
     return { ok: false, error: error.message || 'Could not update lending.' };
+  }
+}
+
+export async function transferCreditsAction({ from, to, amount, note = '' }) {
+  try {
+    const transfer = await transferCredits({ from, to, amount, note });
+    revalidatePath('/');
+    return { ok: true, message: `Sent ${transfer.amount} CU to ${transfer.to_name || to}.` };
+  } catch (error) {
+    return { ok: false, error: error.message || 'Could not send credits.' };
   }
 }
