@@ -789,6 +789,7 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
                 <option value="sum">sum (numbers)</option>
                 <option value="count">count (items)</option>
                 <option value="first">first shard</option>
+                <option value="sum:field">sum of one field (e.g. sum:total)</option>
               </select>
             </>
           ) : null}
