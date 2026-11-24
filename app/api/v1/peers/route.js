@@ -25,6 +25,13 @@ export async function GET(request) {
           avatar: device.profile?.avatar ?? '',
         },
         balance: device.credits?.balance ?? device.wallet?.balance ?? 0,
+        wallet: {
+          balance: device.credits?.balance ?? device.wallet?.balance ?? 0,
+          earned_total: device.credits?.earned_total ?? device.wallet?.earned_total ?? 0,
+          spent_total: device.credits?.spent_total ?? device.wallet?.spent_total ?? 0,
+          units: device.credits?.units ?? 0,
+          total_units: device.credits?.total_units ?? 0,
+        },
         lending: device.lending?.enabled === true,
         last_heartbeat_at: device.last_heartbeat_at ?? null,
       }))
