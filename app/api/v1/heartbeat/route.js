@@ -36,9 +36,27 @@ export async function POST(request) {
     if (cliVersion) device.cli_version = cliVersion;
     if (workloads.length) device.workloads = workloads;
     device.lending = { ...lending, updated_at: now };
-    device.credits = credits;
+    const reportedWallet =
+      body.wallet &&
+      typeof body.wallet === 'object' &&
+      (body.wallet.balance !== undefined ||
+        body.wallet.earned_total !== undefined ||
+        body.wallet.spent_total !== undefined);
+    const settled = device.credits || {};
+    device.credits = {
+      ...credits,
+      balance: reportedWallet ? wallet.balance : Number(settled.balance ?? 0),
+      earned_total: reportedWallet ? wallet.earned_total : Number(settled.earned_total ?? 0),
+      spent_total: reportedWallet ? wallet.spent_total : Number(settled.spent_total ?? 0),
+    };
     device.profile = { ...profile, updated_at: now };
-    device.wallet = { ...wallet, updated_at: now };
+    device.wallet = {
+      ...wallet,
+      balance: reportedWallet ? wallet.balance : Number(settled.balance ?? 0),
+      earned_total: reportedWallet ? wallet.earned_total : Number(settled.earned_total ?? 0),
+      spent_total: reportedWallet ? wallet.spent_total : Number(settled.spent_total ?? 0),
+      updated_at: now,
+    };
     device.caps = caps;
     device.wallet_history = Array.isArray(device.wallet_history) ? device.wallet_history.slice(-240) : [];
     device.wallet_history.push({
