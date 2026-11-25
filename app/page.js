@@ -4,6 +4,7 @@ import { deviceView, summarize } from '../lib/status.js';
 import { taskView } from '../lib/tasks.js';
 import { jobView } from '../lib/jobs.js';
 import { listAll } from '../lib/messages.js';
+import { groupView } from '../lib/groups.js';
 import { currencySummary, listTransfers } from '../lib/credits.js';
 import { ADMIN_COOKIE, adminKey, safeEqual } from '../lib/admin.js';
 import AdminGate from './admin-gate.js';
@@ -37,6 +38,9 @@ export default async function Page() {
     .map((job) => jobView(job, state.tasks, state.devices));
 
   const messages = listAll(state, 30);
+  const groups = Object.values(state.groups || {})
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+    .map((group) => groupView(state, group));
   const currency = { summary: currencySummary(state, state.devices), transfers: listTransfers(state, 30) };
 
   return (
@@ -45,6 +49,7 @@ export default async function Page() {
       initialTasks={tasks}
       initialJobs={jobs}
       initialMessages={messages}
+      initialGroups={groups}
       initialCurrency={currency}
       initialSummary={summarize(state.devices, state.tasks, now)}
     />

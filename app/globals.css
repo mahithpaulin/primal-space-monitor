@@ -729,6 +729,21 @@ tr:last-child td {
   word-break: break-word;
 }
 
+.agent-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.agent-block h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .currency-grid {
   display: grid;
   grid-template-columns: minmax(320px, 1.1fr) minmax(320px, 1fr);

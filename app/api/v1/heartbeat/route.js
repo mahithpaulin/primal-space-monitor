@@ -1,6 +1,6 @@
 import { withState } from '../../../../lib/store.js';
 import { authenticateDevice } from '../../../../lib/auth.js';
-import { sanitizeCaps, sanitizeCredits, sanitizeLending, sanitizeMetrics, sanitizeProfile, sanitizeWallet, sanitizeWorker } from '../../../../lib/device.js';
+import { sanitizeAgent, sanitizeCaps, sanitizeCredits, sanitizeLending, sanitizeMetrics, sanitizeProfile, sanitizeWallet, sanitizeWorker } from '../../../../lib/device.js';
 import { cleanString, json, fail, readJson } from '../../../../lib/http.js';
 import { deviceStatus, offlineSeconds } from '../../../../lib/status.js';
 import { normalizeWorkloads } from '../../../../lib/workloads.js';
@@ -28,6 +28,7 @@ export async function POST(request) {
     const profile = sanitizeProfile(body.profile);
     const wallet = sanitizeWallet(body.wallet);
     const caps = sanitizeCaps(body.caps);
+    const agent = sanitizeAgent(body.agent);
 
     device.metrics = metrics;
     device.worker = worker;
@@ -58,6 +59,7 @@ export async function POST(request) {
       updated_at: now,
     };
     device.caps = caps;
+    device.agent = { ...agent, updated_at: now };
     device.wallet_history = Array.isArray(device.wallet_history) ? device.wallet_history.slice(-240) : [];
     device.wallet_history.push({
       at: now,

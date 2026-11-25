@@ -2,6 +2,7 @@ import { withState, pruneMessages } from '../../../../lib/store.js';
 import { authenticateDevice } from '../../../../lib/auth.js';
 import { isAdminRequest, adminGateResponse } from '../../../../lib/admin.js';
 import { createMessage, listAll, listInbox, messageView } from '../../../../lib/messages.js';
+import { findGroup, groupIdFromTarget, groupRecipients, isGroupTarget } from '../../../../lib/groups.js';
 import { cleanString, json, fail, readJson } from '../../../../lib/http.js';
 
 export const dynamic = 'force-dynamic';
@@ -36,6 +37,23 @@ export async function POST(request) {
 
   if (isAdminRequest(request)) {
     const created = await withState((state) => {
+      if (isGroupTarget(target)) {
+        const group = findGroup(state, groupIdFromTarget(target));
+        if (!group) return { error: 'group_not_found', status: 404 };
+        const messages = groupRecipients(group, 'operator').map((recipient) => {
+          const message = createMessage({
+            from: 'operator',
+            to: recipient,
+            topic,
+            body: bodyText,
+            group_id: group.id,
+          });
+          state.messages[message.id] = message;
+          return message;
+        });
+        pruneMessages(state);
+        return { messages: messages.map(messageView), group_id: group.id };
+      }
       if (target && !state.devices[target]) return { error: 'device_not_found', status: 404 };
       const message = createMessage({ from: 'operator', to: target || null, topic, body: bodyText });
       state.messages[message.id] = message;
@@ -51,6 +69,24 @@ export async function POST(request) {
   const created = await withState((state) => {
     const auth = authenticateDevice(state, request, deviceId);
     if (auth.error) return auth;
+    if (isGroupTarget(target)) {
+      const group = findGroup(state, groupIdFromTarget(target));
+      if (!group) return { error: 'group_not_found', status: 404 };
+      if (!(group.members || []).includes(deviceId)) return { error: 'group_forbidden', status: 403 };
+      const messages = groupRecipients(group, deviceId).map((recipient) => {
+        const message = createMessage({
+          from: deviceId,
+          to: recipient,
+          topic,
+          body: bodyText,
+          group_id: group.id,
+        });
+        state.messages[message.id] = message;
+        return message;
+      });
+      pruneMessages(state);
+      return { messages: messages.map(messageView), group_id: group.id };
+    }
     if (target && !state.devices[target]) return { error: 'device_not_found', status: 404 };
     const message = createMessage({ from: deviceId, to: target || null, topic, body: bodyText });
     state.messages[message.id] = message;

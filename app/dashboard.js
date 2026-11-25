@@ -513,11 +513,60 @@ function MessageFeed({ messages, devices }) {
   );
 }
 
-export default function Dashboard({ initialDevices, initialTasks, initialJobs = [], initialMessages = [], initialSummary, initialCurrency }) {
+
+function AgentPanel({ devices, groups }) {
+  const agents = devices.filter((device) => device.agent?.enabled || device.agent?.connected);
+  return (
+    <div className="agent-panel">
+      <div className="agent-block">
+        <h3>Primal agents</h3>
+        {agents.length === 0 ? (
+          <p className="muted empty">No agent connected yet. Sign in with ChatGPT on a device to start one.</p>
+        ) : (
+          <ul className="message-list">
+            {agents.map((device) => (
+              <li key={device.id} className="message">
+                <div className="message-head">
+                  <span className="mono small">{device.agent?.name || device.name}</span>
+                  <span className="muted small">
+                    {device.agent?.connected ? 'chatgpt connected' : 'not signed in'} · {device.agent?.model || 'no model'}
+                    {device.agent?.account ? ` · ${device.agent.account}` : ''}
+                  </span>
+                </div>
+                <p className="message-body">on {device.name} · {device.status}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="agent-block">
+        <h3>Group chats</h3>
+        {groups.length === 0 ? (
+          <p className="muted empty">No group chats yet.</p>
+        ) : (
+          <ul className="message-list">
+            {groups.map((group) => (
+              <li key={group.id} className="message">
+                <div className="message-head">
+                  <span className="mono small">{group.name}</span>
+                  <span className="muted small">{group.members.length} member(s)</span>
+                </div>
+                <p className="message-body">{group.members.map((member) => member.name).join(', ')}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function Dashboard({ initialDevices, initialTasks, initialJobs = [], initialMessages = [], initialGroups = [], initialSummary, initialCurrency }) {
   const [devices, setDevices] = useState(initialDevices);
   const [tasks, setTasks] = useState(initialTasks);
   const [jobs, setJobs] = useState(initialJobs);
   const [messages, setMessages] = useState(initialMessages);
+  const [groups] = useState(initialGroups);
   const [currency, setCurrency] = useState(initialCurrency || { summary: {}, transfers: [] });
   const [summary, setSummary] = useState(initialSummary);
   const [notice, setNotice] = useState(null);
@@ -912,6 +961,14 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
           <span className="muted small">active compute · one unit per hour of compute lent</span>
         </div>
         <LendingPanel devices={devices} pending={pending} onToggle={toggleLending} />
+      </section>
+
+      <section className="section">
+        <div className="section-head">
+          <h2>Agents & group chats</h2>
+          <span className="muted small">chatgpt plan usage · agents join group chats</span>
+        </div>
+        <AgentPanel devices={devices} groups={groups} />
       </section>
 
       <section className="section">
