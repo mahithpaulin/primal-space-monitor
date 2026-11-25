@@ -1,5 +1,6 @@
 import { withState } from '../../../../lib/store.js';
 import { authenticateDevice } from '../../../../lib/auth.js';
+import { isAdminRequest } from '../../../../lib/admin.js';
 import { cleanString, json, fail, readJson } from '../../../../lib/http.js';
 import { createGroup, groupView, listGroupsForDevice } from '../../../../lib/groups.js';
 
@@ -7,6 +8,13 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request) {
   const url = new URL(request.url);
+  if (isAdminRequest(request)) {
+    const state = await withState((current) => current);
+    const groups = Object.values(state.groups || {})
+      .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+      .map((group) => groupView(state, group));
+    return json({ groups, scope: 'all' });
+  }
   const deviceId = cleanString(url.searchParams.get('device_id'), 64);
   if (!deviceId) return fail('device_id_required', 400);
   const result = await withState((state) => {
