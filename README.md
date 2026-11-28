@@ -14,6 +14,16 @@ store, so no external database account is required for v0.1.
 - Shows registered, connected, offline, and executing devices in a responsive
   dashboard.
 
+## Install the apps
+
+The dashboard has an **Apps** section with one-click installers:
+
+| App | Link |
+| --- | --- |
+| Desktop (Windows, macOS, Linux) | <https://github.com/mahithpaulin/primal-space-cli/releases/latest> |
+| Android APK | <https://github.com/mahithpaulin/primalspace-android/releases/latest> |
+| Command line / source | <https://github.com/mahithpaulin/primal-space-cli> |
+
 ## API
 
 | Method | Path | Auth | Purpose |

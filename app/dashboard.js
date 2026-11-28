@@ -30,7 +30,30 @@ const DASHBOARD_SECTIONS = [
   { id: 'devices', label: 'Devices' },
   { id: 'wallet', label: 'Wallet' },
   { id: 'comms', label: 'Messages & agents' },
+  { id: 'apps', label: 'Apps' },
 ];
+
+const DESKTOP_RELEASES = {
+  windows: {
+    label: 'Windows x64',
+    asset: 'primal-space-windows-x64.exe',
+  },
+  macIntel: {
+    label: 'macOS Intel',
+    asset: 'primal-space-macos-x64',
+  },
+  macArm: {
+    label: 'macOS Apple Silicon',
+    asset: 'primal-space-macos-arm64',
+  },
+  linux: {
+    label: 'Linux x64',
+    asset: 'primal-space-linux-x64',
+  },
+};
+
+const DESKTOP_RELEASE_BASE = 'https://github.com/mahithpaulin/primal-space-cli/releases/latest/download';
+const ANDROID_RELEASE_BASE = 'https://github.com/mahithpaulin/primalspace-android/releases/latest/download';
 
 function formatMb(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
@@ -569,6 +592,74 @@ function AgentPanel({ devices, groups }) {
   );
 }
 
+function InstallPanel() {
+  return (
+    <div className="install-grid">
+      <article className="install-card">
+        <div className="install-head">
+          <h3>Desktop app</h3>
+          <span className="muted small">Windows · macOS · Linux</span>
+        </div>
+        <p className="muted">
+          One binary runs the worker, the heartbeat and the windowed console: Compute tab with
+          settled numbers, group chats, job history and the Primal agent.
+        </p>
+        <div className="install-links">
+          {Object.entries(DESKTOP_RELEASES).map(([key, item]) => (
+            <a key={key} href={`${DESKTOP_RELEASE_BASE}/${item.asset}`}>
+              {item.label}
+            </a>
+          ))}
+        </div>
+        <p className="muted small">
+          Verify each download with the .sha256 file published next to it ·{' '}
+          <a href="https://github.com/mahithpaulin/primal-space-cli/releases/latest">
+            all desktop releases
+          </a>
+        </p>
+      </article>
+
+      <article className="install-card">
+        <div className="install-head">
+          <h3>Android app</h3>
+          <span className="muted small">native worker + messaging</span>
+        </div>
+        <p className="muted">
+          Modular pages for Home, Compute, Work, Chats, Agent and Settings, with WhatsApp-style
+          group chats and credits settled by the monitor.
+        </p>
+        <div className="install-links">
+          <a href={`${ANDROID_RELEASE_BASE}/primalspace.apk`}>Download APK</a>
+        </div>
+        <p className="muted small">
+          <a href="https://github.com/mahithpaulin/primalspace-android/releases/latest">
+            all Android releases
+          </a>
+        </p>
+      </article>
+
+      <article className="install-card">
+        <div className="install-head">
+          <h3>Command line</h3>
+          <span className="muted small">Termux · Linux · WSL</span>
+        </div>
+        <p className="muted">
+          The same worker and heartbeat without the window. Install from source, then run
+          <code> primal init --enrollment-key YOUR_KEY</code> and <code>primal desktop</code> when
+          you want the console.
+        </p>
+        <div className="install-links">
+          <a href="https://github.com/mahithpaulin/primal-space-cli#desktop-app-windows-macos-linux">
+            Install guide
+          </a>
+          <a href="https://github.com/mahithpaulin/primal-space-cli">Source</a>
+        </div>
+        <p className="muted small">The operator enrollment key is required to join the network.</p>
+      </article>
+    </div>
+  );
+}
+
 export default function Dashboard({ initialDevices, initialTasks, initialJobs = [], initialMessages = [], initialGroups = [], initialSummary, initialCurrency }) {
   const [devices, setDevices] = useState(initialDevices);
   const [tasks, setTasks] = useState(initialTasks);
@@ -760,6 +851,9 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
             {error ? 'API error' : 'live'}
           </span>
           <span className="muted small">updated {formatAge(new Date(lastUpdated).toISOString())}</span>
+          <button type="button" className="ghost" onClick={() => setSection('apps')}>
+            Get the app
+          </button>
           <button type="button" className="ghost" onClick={refresh}>
             Refresh
           </button>
@@ -1060,6 +1154,16 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
         </div>
         <TaskTable tasks={tasks.filter((task) => !task.job_id)} pending={pending} onCancel={cancelTask} />
       </section>
+      ) : null}
+
+      {section === 'apps' ? (
+        <section className="section">
+        <div className="section-head">
+          <h2>Install PrimalSpace</h2>
+          <span className="muted small">desktop · android · command line</span>
+        </div>
+        <InstallPanel />
+        </section>
       ) : null}
 
       <footer className="footer">
