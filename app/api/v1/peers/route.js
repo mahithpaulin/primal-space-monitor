@@ -1,5 +1,6 @@
-import { withState } from '../../../../lib/store.js';
+import { withStateRead } from '../../../../lib/store.js';
 import { authenticateDevice } from '../../../../lib/auth.js';
+import { deviceStatus } from '../../../../lib/status.js';
 import { cleanString, json, fail } from '../../../../lib/http.js';
 import { normalizeWorkloads } from '../../../../lib/workloads.js';
 
@@ -9,7 +10,7 @@ export async function GET(request) {
   const url = new URL(request.url);
   const deviceId = cleanString(url.searchParams.get('device_id'), 64);
   if (!deviceId) return fail('device_id_required', 400);
-  const result = await withState((state) => {
+  const result = await withStateRead((state) => {
     const auth = authenticateDevice(state, request, deviceId);
     if (auth.error) return auth;
     const peers = Object.values(state.devices)
@@ -17,7 +18,7 @@ export async function GET(request) {
       .map((device) => ({
         id: device.id,
         name: device.name,
-        status: device.status,
+        status: deviceStatus(device),
         workloads: normalizeWorkloads(device.workloads),
         profile: {
           name: device.profile?.name ?? '',
@@ -33,7 +34,7 @@ export async function GET(request) {
           total_units: device.credits?.total_units ?? 0,
         },
         lending: device.lending?.enabled === true,
-        last_heartbeat_at: device.last_heartbeat_at ?? null,
+        last_heartbeat_at: device.last_heartbeat ?? null,
       }))
       .sort((a, b) => String(a.name).localeCompare(String(b.name)));
     return { peers };

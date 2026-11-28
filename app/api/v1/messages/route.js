@@ -1,4 +1,4 @@
-import { withState, pruneMessages } from '../../../../lib/store.js';
+import { withState, withStateRead, pruneMessages } from '../../../../lib/store.js';
 import { authenticateDevice } from '../../../../lib/auth.js';
 import { isAdminRequest, adminGateResponse } from '../../../../lib/admin.js';
 import { createMessage, listAll, listInbox, messageView } from '../../../../lib/messages.js';
@@ -12,14 +12,14 @@ export async function GET(request) {
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit')) || 50));
 
   if (isAdminRequest(request)) {
-    const state = await withState((current) => current);
+    const state = await withStateRead((current) => current);
     return json({ messages: listAll(state, limit), scope: 'all' });
   }
 
   const deviceId = cleanString(url.searchParams.get('device_id'), 64);
   if (!deviceId) return fail('device_id_required', 400);
   const since = cleanString(url.searchParams.get('since'), 40);
-  const result = await withState((state) => {
+  const result = await withStateRead((state) => {
     const auth = authenticateDevice(state, request, deviceId);
     if (auth.error) return auth;
     return { messages: listInbox(state, deviceId, { since, limit }) };

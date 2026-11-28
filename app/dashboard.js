@@ -24,6 +24,14 @@ const WORKLOAD_LABELS = {
   http: 'HTTP request',
 };
 
+const DASHBOARD_SECTIONS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'work', label: 'Work & history' },
+  { id: 'devices', label: 'Devices' },
+  { id: 'wallet', label: 'Wallet' },
+  { id: 'comms', label: 'Messages & agents' },
+];
+
 function formatMb(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
   const mb = Number(value);
@@ -188,7 +196,7 @@ function DeviceCard({ device, pending, onCancel, onTarget }) {
 
 function TaskTable({ tasks, pending, onCancel }) {
   if (!tasks.length) {
-    return <p className="muted empty">No standalone tasks yet. Launch one above; any eligible worker can claim it.</p>;
+    return <p className="muted empty">No standalone tasks yet. Launch one above; any compatible worker can claim it.</p>;
   }
   return (
     <div className="table-wrap">
@@ -571,6 +579,7 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
   const [summary, setSummary] = useState(initialSummary);
   const [notice, setNotice] = useState(null);
   const [error, setError] = useState(null);
+  const [section, setSection] = useState('overview');
 
   const [workload, setWorkload] = useState('python');
   const [target, setTarget] = useState('any');
@@ -592,8 +601,8 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
     try {
       const [devicesResponse, tasksResponse, jobsResponse, messagesResponse, creditsResponse] = await Promise.all([
         fetch('/api/v1/devices', { cache: 'no-store' }),
-        fetch('/api/v1/tasks?limit=20', { cache: 'no-store' }),
-        fetch('/api/v1/jobs?limit=12', { cache: 'no-store' }),
+        fetch('/api/v1/tasks?limit=50', { cache: 'no-store' }),
+        fetch('/api/v1/jobs?limit=30', { cache: 'no-store' }),
         fetch('/api/v1/messages?limit=30', { cache: 'no-store' }),
         fetch('/api/v1/credits?limit=30', { cache: 'no-store' }),
       ]);
@@ -636,7 +645,7 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
       return 'Add a JSON items array to split this job across shards.';
     }
     if (text.includes('insufficient_balance')) return 'That wallet does not have enough CU.';
-    if (text.includes('unsupported_workload')) return 'No eligible device supports that workload.';
+    if (text.includes('unsupported_workload')) return 'No compatible device supports that workload.';
     return text;
   }
 
@@ -733,6 +742,7 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
   const connected = summary?.connected ?? 0;
   const offline = summary?.offline ?? 0;
   const registeredOnly = summary?.registered_only ?? 0;
+  const compatibleDevices = devices.filter((device) => (device.workloads || []).includes(workload));
 
   return (
     <main className="shell">
@@ -756,6 +766,20 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
         </div>
       </header>
 
+      <nav className="section-tabs" aria-label="Console sections">
+        {DASHBOARD_SECTIONS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={section === item.id ? 'section-tab active' : 'section-tab'}
+            aria-current={section === item.id ? 'page' : undefined}
+            onClick={() => setSection(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
+
       {notice ? (
         <div className="notice" role="status">
           {notice}
@@ -766,17 +790,21 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
       ) : null}
       {error ? <div className="notice error">Monitor API error: {error}</div> : null}
 
-      <section className="stats" aria-label="Overview">
-        <StatCard label="Registered devices" value={summary?.total_registered ?? devices.length} detail={`${registeredOnly} awaiting heartbeat`} />
-        <StatCard label="Connected" value={connected} detail="heartbeat fresh" />
-        <StatCard label="Offline" value={offline} detail={`expires after ${summary?.offline_after_seconds ?? 90}s`} />
-        <StatCard label="Active workers" value={summary?.active_workers ?? 0} detail="compute opted in" />
-        <StatCard label="Available RAM" value={formatMb(summary?.total_available_ram_mb)} detail="connected workers" />
-        <StatCard label="Active tasks" value={summary?.active_tasks ?? 0} detail={`${summary?.executing ?? 0} executing`} />
-        <StatCard label="Compute units" value={summary?.total_compute_units ?? 0} detail={`${summary?.lending_devices ?? 0} devices lending`} />
-        <StatCard label="CU balance" value={`${(currency.summary?.total_balance ?? 0).toFixed(2)}`} detail="spendable currency" />
-      </section>
+      {section === 'overview' ? (
+        <section className="stats" aria-label="Overview">
+          <StatCard label="Registered devices" value={summary?.total_registered ?? devices.length} detail={`${registeredOnly} awaiting heartbeat`} />
+          <StatCard label="Connected" value={connected} detail="heartbeat fresh" />
+          <StatCard label="Offline" value={offline} detail={`expires after ${summary?.offline_after_seconds ?? 90}s`} />
+          <StatCard label="Active workers" value={summary?.active_workers ?? 0} detail="compute opted in" />
+          <StatCard label="Available RAM" value={formatMb(summary?.total_available_ram_mb)} detail="connected workers" />
+          <StatCard label="Active tasks" value={summary?.active_tasks ?? 0} detail={`${summary?.executing ?? 0} executing`} />
+          <StatCard label="Compute units" value={summary?.total_compute_units ?? 0} detail={`${summary?.lending_devices ?? 0} devices lending`} />
+          <StatCard label="CU balance" value={`${(currency.summary?.total_balance ?? 0).toFixed(2)}`} detail="spendable currency" />
+        </section>
+      ) : null}
 
+      {section === 'work' ? (
+        <>
       <section className="section">
         <div className="section-head">
           <h2>Launch a task</h2>
@@ -791,7 +819,17 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
             onChange={(event) => {
               const next = event.target.value;
               setWorkload(next);
-              if (next === 'http' && target === 'distributed') setTarget('any');
+              if (next === 'http' && target === 'distributed') {
+                setTarget('any');
+                return;
+              }
+              if (
+                target !== 'any' &&
+                target !== 'distributed' &&
+                !devices.some((device) => device.id === target && (device.workloads || []).includes(next))
+              ) {
+                setTarget('any');
+              }
             }}
           >
             <option value="python">Python function</option>
@@ -806,9 +844,9 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
             value={target}
             onChange={(event) => setTarget(event.target.value)}
           >
-            <option value="any">Any eligible device</option>
+            <option value="any">Any compatible device</option>
             {workload === 'http' ? null : <option value="distributed">Distribute across devices</option>}
-            {devices.map((device) => (
+            {compatibleDevices.map((device) => (
               <option key={device.id} value={device.id}>
                 {device.name} ({device.status})
               </option>
@@ -897,8 +935,8 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
 
       <section className="section">
         <div className="section-head">
-          <h2>Jobs</h2>
-          <span className="muted small">one job → many shards, auto-scheduled to every capable worker</span>
+          <h2>Job history</h2>
+          <span className="muted small">distributed work and recent outcomes</span>
         </div>
         {jobs.length ? (
           <div className="job-list">
@@ -910,7 +948,11 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
           <p className="muted empty">No jobs yet. Add items and choose “Distribute across devices”.</p>
         )}
       </section>
+        </>
+      ) : null}
 
+      {section === 'devices' ? (
+        <>
       <section className="section">
         <div className="section-head">
           <h2>Devices</h2>
@@ -926,7 +968,7 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
                 onCancel={cancelTask}
                 onTarget={(deviceId) => {
                   setComposeTo(deviceId);
-                  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                  setSection('comms');
                 }}
               />
             ))}
@@ -940,7 +982,11 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
           </div>
         )}
       </section>
+        </>
+      ) : null}
 
+      {section === 'wallet' ? (
+        <>
       <section className="section">
         <div className="section-head">
           <h2>Currency</h2>
@@ -962,7 +1008,11 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
         </div>
         <LendingPanel devices={devices} pending={pending} onToggle={toggleLending} />
       </section>
+        </>
+      ) : null}
 
+      {section === 'comms' ? (
+        <>
       <section className="section">
         <div className="section-head">
           <h2>Agents & group chats</h2>
@@ -999,14 +1049,18 @@ export default function Dashboard({ initialDevices, initialTasks, initialJobs = 
         </div>
         <MessageFeed messages={messages} devices={devices} />
       </section>
+        </>
+      ) : null}
 
-      <section className="section">
+      {section === 'work' ? (
+        <section className="section">
         <div className="section-head">
           <h2>Standalone tasks</h2>
           <span className="muted small">python · shell · http</span>
         </div>
         <TaskTable tasks={tasks.filter((task) => !task.job_id)} pending={pending} onCancel={cancelTask} />
       </section>
+      ) : null}
 
       <footer className="footer">
         <span>Primal Space Monitor · Vercel + Neon state</span>

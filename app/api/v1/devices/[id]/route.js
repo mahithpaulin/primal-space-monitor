@@ -1,4 +1,5 @@
 import { readState, withState } from '../../../../../lib/store.js';
+import { authenticateDevice } from '../../../../../lib/auth.js';
 import { deviceView } from '../../../../../lib/status.js';
 import { taskView } from '../../../../../lib/tasks.js';
 import { adminGateResponse, isAdminRequest } from '../../../../../lib/admin.js';
@@ -6,11 +7,15 @@ import { json, fail } from '../../../../../lib/http.js';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(_request, context) {
+export async function GET(request, context) {
   const { id } = await context.params;
   const state = await readState();
   const device = state.devices[id];
   if (!device) return fail('device_not_found', 404);
+  if (!isAdminRequest(request)) {
+    const auth = authenticateDevice(state, request, id);
+    if (auth.error) return fail(auth.error, auth.status);
+  }
 
   const tasks = Object.values(state.tasks)
     .filter((task) => task.device_id === id)

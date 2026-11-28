@@ -5,6 +5,15 @@ import { revalidatePath } from 'next/cache';
 import { issueTask, cancelTask, issueJob, cancelJob, sendOperatorMessage, requestLending, transferCredits } from '../lib/actions.js';
 import { ADMIN_COOKIE, adminKey, safeEqual } from '../lib/admin.js';
 
+async function adminSessionRequired() {
+  const expected = adminKey();
+  if (!expected) return null;
+  const store = await cookies();
+  const provided = store.get(ADMIN_COOKIE)?.value ?? null;
+  if (provided && safeEqual(provided, expected)) return null;
+  return { ok: false, error: 'admin_required' };
+}
+
 export async function adminLoginAction(key) {
   const expected = adminKey();
   if (!expected) return { ok: true };
@@ -29,6 +38,8 @@ export async function adminLogoutAction() {
 }
 
 export async function enqueueTaskAction({ workload = 'python', params = {}, deviceId = null }) {
+  const denied = await adminSessionRequired();
+  if (denied) return denied;
   try {
     const task = await issueTask({
       deviceId: deviceId || null,
@@ -41,7 +52,7 @@ export async function enqueueTaskAction({ workload = 'python', params = {}, devi
     return {
       ok: true,
       taskId: task.id,
-      message: `${workload} task ${task.id.slice(0, 8)} queued for ${task.device_name || 'any eligible device'}.`,
+      message: `${workload} task ${task.id.slice(0, 8)} queued for ${task.device_name || 'any compatible device'}.`,
     };
   } catch (error) {
     return { ok: false, error: error.message || 'Could not queue task.' };
@@ -49,6 +60,8 @@ export async function enqueueTaskAction({ workload = 'python', params = {}, devi
 }
 
 export async function enqueueJobAction({ workload = 'python', params = {}, shards = 4, reduce = 'concat' }) {
+  const denied = await adminSessionRequired();
+  if (denied) return denied;
   try {
     const job = await issueJob({
       workload,
@@ -70,6 +83,8 @@ export async function enqueueJobAction({ workload = 'python', params = {}, shard
 }
 
 export async function cancelJobAction({ jobId }) {
+  const denied = await adminSessionRequired();
+  if (denied) return denied;
   try {
     const job = await cancelJob(jobId);
     revalidatePath('/');
@@ -80,6 +95,8 @@ export async function cancelJobAction({ jobId }) {
 }
 
 export async function cancelTaskAction({ taskId }) {
+  const denied = await adminSessionRequired();
+  if (denied) return denied;
   try {
     const task = await cancelTask(taskId);
     revalidatePath('/');
@@ -90,6 +107,8 @@ export async function cancelTaskAction({ taskId }) {
 }
 
 export async function sendMessageAction({ to = null, body = '', topic = 'chat' }) {
+  const denied = await adminSessionRequired();
+  if (denied) return denied;
   try {
     const message = await sendOperatorMessage({ to: to || null, body, topic });
     revalidatePath('/');
@@ -100,6 +119,8 @@ export async function sendMessageAction({ to = null, body = '', topic = 'chat' }
 }
 
 export async function setLendingAction({ deviceId, enabled, cpuPct = null, minutesPerHour = null, unitsPerHour = null }) {
+  const denied = await adminSessionRequired();
+  if (denied) return denied;
   try {
     const request = await requestLending({ deviceId, enabled, cpuPct, minutesPerHour, unitsPerHour });
     revalidatePath('/');
@@ -115,6 +136,8 @@ export async function setLendingAction({ deviceId, enabled, cpuPct = null, minut
 }
 
 export async function transferCreditsAction({ from, to, amount, note = '' }) {
+  const denied = await adminSessionRequired();
+  if (denied) return denied;
   try {
     const transfer = await transferCredits({ from, to, amount, note });
     revalidatePath('/');

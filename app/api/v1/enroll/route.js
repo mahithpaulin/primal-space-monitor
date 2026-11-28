@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { withState } from '../../../../lib/store.js';
-import { hashToken, newToken } from '../../../../lib/auth.js';
+import { hashToken, newToken, safeEqual } from '../../../../lib/auth.js';
 import { sanitizeDeviceInfo } from '../../../../lib/device.js';
 import { cleanString, json, fail, readJson } from '../../../../lib/http.js';
 import { offlineSeconds } from '../../../../lib/status.js';
@@ -11,11 +11,16 @@ export async function POST(request) {
   const body = await readJson(request);
   if (!body) return fail('invalid_json', 400);
 
+  const expectedEnrollmentKey = process.env.PRIMAL_ENROLLMENT_KEY;
+  if (!expectedEnrollmentKey) return fail('enrollment_not_configured', 503);
+  if (!safeEqual(body.enrollment_key, expectedEnrollmentKey)) {
+    return fail('invalid_enrollment_key', 403);
+  }
+
   const installId = cleanString(body.install_id, 64);
   if (!installId) return fail('install_id_required', 400);
 
   const info = sanitizeDeviceInfo(body.device);
-  const enrollmentKey = crypto.randomBytes(24).toString('base64url');
   const token = newToken();
   const tokenHash = hashToken(token);
   const now = new Date().toISOString();
@@ -37,7 +42,6 @@ export async function POST(request) {
       return {
         device_id: existing.id,
         token,
-        enrollment_key: enrollmentKey,
         status: 'registered',
         server_time: now,
         offline_after_seconds: offlineSeconds(),
@@ -67,7 +71,6 @@ export async function POST(request) {
     return {
       device_id: id,
       token,
-      enrollment_key: enrollmentKey,
       status: 'registered',
       server_time: now,
       offline_after_seconds: offlineSeconds(),

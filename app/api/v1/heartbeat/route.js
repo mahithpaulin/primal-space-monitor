@@ -1,6 +1,6 @@
 import { withState } from '../../../../lib/store.js';
 import { authenticateDevice } from '../../../../lib/auth.js';
-import { sanitizeAgent, sanitizeCaps, sanitizeCredits, sanitizeLending, sanitizeMetrics, sanitizeProfile, sanitizeWallet, sanitizeWorker } from '../../../../lib/device.js';
+import { sanitizeAgent, sanitizeCaps, sanitizeLending, sanitizeMetrics, sanitizeProfile, sanitizeWallet, sanitizeWorker } from '../../../../lib/device.js';
 import { cleanString, json, fail, readJson } from '../../../../lib/http.js';
 import { deviceStatus, offlineSeconds } from '../../../../lib/status.js';
 import { normalizeWorkloads } from '../../../../lib/workloads.js';
@@ -24,7 +24,6 @@ export async function POST(request) {
     const cliVersion = cleanString(body.cli_version, 32);
     const workloads = normalizeWorkloads(body.workloads);
     const lending = sanitizeLending(body.lending);
-    const credits = sanitizeCredits(body.credits);
     const profile = sanitizeProfile(body.profile);
     const wallet = sanitizeWallet(body.wallet);
     const caps = sanitizeCaps(body.caps);
@@ -35,37 +34,58 @@ export async function POST(request) {
     device.last_heartbeat = now;
     device.disconnected_at = null;
     if (cliVersion) device.cli_version = cliVersion;
-    if (workloads.length) device.workloads = workloads;
-    device.lending = { ...lending, updated_at: now };
-    const reportedWallet =
-      body.wallet &&
-      typeof body.wallet === 'object' &&
-      (body.wallet.balance !== undefined ||
-        body.wallet.earned_total !== undefined ||
-        body.wallet.spent_total !== undefined);
+    if (Object.prototype.hasOwnProperty.call(body, 'workloads')) device.workloads = workloads;
+    if (Object.prototype.hasOwnProperty.call(body, 'lending')) {
+      device.lending = { ...lending, updated_at: now };
+    }
     const settled = device.credits || {};
-    device.credits = {
-      ...credits,
-      balance: reportedWallet ? wallet.balance : Number(settled.balance ?? 0),
-      earned_total: reportedWallet ? wallet.earned_total : Number(settled.earned_total ?? 0),
-      spent_total: reportedWallet ? wallet.spent_total : Number(settled.spent_total ?? 0),
+    const finiteOrZero = (value) => {
+      const number = Number(value ?? 0);
+      return Number.isFinite(number) ? number : 0;
     };
-    device.profile = { ...profile, updated_at: now };
-    device.wallet = {
-      ...wallet,
-      balance: reportedWallet ? wallet.balance : Number(settled.balance ?? 0),
-      earned_total: reportedWallet ? wallet.earned_total : Number(settled.earned_total ?? 0),
-      spent_total: reportedWallet ? wallet.spent_total : Number(settled.spent_total ?? 0),
+    const settledBalance = finiteOrZero(settled.balance);
+    const settledEarned = finiteOrZero(settled.earned_total);
+    const settledSpent = finiteOrZero(settled.spent_total);
+    device.credits = {
+      ...settled,
+      units: Number(settled.units ?? 0),
+      total_units: Number(settled.total_units ?? 0),
+      minutes_used: Number(settled.minutes_used ?? 0),
+      window_start: settled.window_start ?? null,
+      balance: settledBalance,
+      earned_total: settledEarned,
+      spent_total: settledSpent,
       updated_at: now,
     };
-    device.caps = caps;
-    device.agent = { ...agent, updated_at: now };
+    if (Object.prototype.hasOwnProperty.call(body, 'profile')) {
+      device.profile = { ...profile, updated_at: now };
+    }
+    device.wallet = {
+      ...wallet,
+      balance: settledBalance,
+      earned_total: settledEarned,
+      spent_total: settledSpent,
+      units: Number(settled.units ?? 0),
+      total_units: Number(settled.total_units ?? 0),
+      updated_at: now,
+    };
+    if (Object.prototype.hasOwnProperty.call(body, 'caps')) device.caps = caps;
+    if (Object.prototype.hasOwnProperty.call(body, 'agent')) {
+      device.agent = { ...agent, updated_at: now };
+    }
     device.wallet_history = Array.isArray(device.wallet_history) ? device.wallet_history.slice(-240) : [];
-    device.wallet_history.push({
-      at: now,
-      balance: credits.units,
-      earned: credits.total_units,
-    });
+    const previousHistory = device.wallet_history[device.wallet_history.length - 1];
+    if (
+      !previousHistory ||
+      Number(previousHistory.balance) !== settledBalance ||
+      Number(previousHistory.earned) !== settledEarned
+    ) {
+      device.wallet_history.push({
+        at: now,
+        balance: settledBalance,
+        earned: settledEarned,
+      });
+    }
 
     return {
       ok: true,
@@ -73,6 +93,8 @@ export async function POST(request) {
       server_time: now,
       offline_after_seconds: offlineSeconds(),
       status: deviceStatus(device),
+      wallet: device.wallet,
+      credits: device.credits,
       lending_request: device.lending_request ?? null,
     };
   });

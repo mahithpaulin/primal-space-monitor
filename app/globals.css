@@ -85,6 +85,31 @@ code,
   flex-wrap: wrap;
 }
 
+.section-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  margin: 0 0 22px;
+  padding: 10px 0 14px;
+  background: linear-gradient(180deg, var(--bg) 72%, rgba(6, 8, 18, 0));
+}
+
+.section-tab {
+  flex: 0 0 auto;
+  background: rgba(16, 21, 40, 0.78);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.section-tab.active {
+  color: var(--text);
+  border-color: rgba(125, 211, 252, 0.55);
+  background: rgba(14, 165, 233, 0.16);
+}
+
 .live {
   display: inline-flex;
   align-items: center;

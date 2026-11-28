@@ -34,7 +34,7 @@ export default async function Page() {
 
   const jobs = Object.values(state.jobs || {})
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
-    .slice(0, 12)
+    .slice(0, 30)
     .map((job) => jobView(job, state.tasks, state.devices));
 
   const messages = listAll(state, 30);

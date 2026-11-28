@@ -3,6 +3,7 @@ import { authenticateDevice } from '../../../../../lib/auth.js';
 import { MAX_RESULT_BYTES, MAX_STDOUT, taskView } from '../../../../../lib/tasks.js';
 import { finalizeJob } from '../../../../../lib/jobs.js';
 import { cleanString, finiteNumber, json, fail, readJson } from '../../../../../lib/http.js';
+import { accrueDeviceCompute } from '../../../../../lib/credits.js';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -46,6 +47,14 @@ export async function POST(request) {
     const settle = () => {
       if (task.job_id && state.jobs?.[task.job_id]) finalizeJob(state.jobs[task.job_id], state.tasks);
     };
+    if (Date.parse(task.deadline_at) < Date.now()) {
+      task.status = 'failed';
+      task.error = 'deadline_exceeded';
+      task.completed_at = new Date().toISOString();
+      settle();
+      pruneTasks(state);
+      return { ok: true, task: taskView(task, state.devices), late: true };
+    }
     const reportedStatus = cleanString(body.status, 16) || 'completed';
     const now = new Date().toISOString();
     const duration = finiteNumber(body.duration_ms, 0, 86400000);
@@ -55,8 +64,19 @@ export async function POST(request) {
       cpu_pct_avg: finiteNumber(body.metrics?.cpu_pct_avg, 0, 100),
       cpu_load_pct: finiteNumber(body.metrics?.cpu_load_pct, 0, 1000),
       worker_cpu_pct_avg: finiteNumber(body.metrics?.worker_cpu_pct_avg, 0, 1000),
+      child_cpu_pct_avg: finiteNumber(body.metrics?.child_cpu_pct_avg, 0, 1000),
       rss_mb_peak: finiteNumber(body.metrics?.rss_mb_peak, 0, 4096),
     };
+    const executionStartedAt = Date.parse(task.started_at || task.claimed_at || task.created_at);
+    const serverElapsed = Number.isFinite(executionStartedAt)
+      ? Math.max(0, Date.now() - executionStartedAt)
+      : 0;
+    const maxSeconds = Math.min(30, Math.max(1, Number(task.resource_limits?.max_seconds) || 10));
+    const effectiveDuration = Math.min(
+      duration ?? serverElapsed,
+      serverElapsed + 5000,
+      maxSeconds * 1000 + 5000,
+    );
 
     if (reportedStatus === 'cancelled') {
       task.status = 'cancelled';
@@ -73,6 +93,12 @@ export async function POST(request) {
       task.error = cleanString(body.error, 200) || 'worker_reported_failure';
       task.verified = false;
       task.completed_at = now;
+      accrueDeviceCompute(state.devices[deviceId], {
+        durationMs: effectiveDuration,
+        cpuPct: task.metrics.worker_cpu_pct_avg,
+        childCpuPct: task.metrics.child_cpu_pct_avg,
+        earn: false,
+      });
       settle();
       pruneTasks(state);
       return { ok: true, task: taskView(task, state.devices) };
@@ -98,6 +124,11 @@ export async function POST(request) {
     task.status = 'completed';
     task.error = null;
     task.completed_at = now;
+    accrueDeviceCompute(state.devices[deviceId], {
+      durationMs: effectiveDuration,
+      cpuPct: task.metrics.worker_cpu_pct_avg,
+      childCpuPct: task.metrics.child_cpu_pct_avg,
+    });
     settle();
     pruneTasks(state);
 
